@@ -89,7 +89,7 @@ use modalkit::errors::UIError;
 use modalkit::prelude::{EditInfo, InfoMessage};
 
 use crate::base::Need;
-use crate::notifications::register_notifications;
+use crate::notifications::{register_notifications, NotificationHandle};
 use crate::{
     base::{
         AsyncProgramStore,
@@ -500,13 +500,15 @@ async fn send_receipts_forever(client: &Client, store: &AsyncProgramStore) {
     loop {
         interval.tick().await;
 
-        let locked = store.lock().await;
-        let user_id = &locked.application.settings.profile.user_id;
+        let mut locked = store.lock().await;
+
+        let ChatStore { settings, open_notifications, rooms, .. } = &mut locked.application;
+        let user_id = &settings.profile.user_id;
 
         let mut updates = Vec::new();
         for room in client.joined_rooms() {
-            let room_id = room.room_id();
-            let Some(info) = locked.application.rooms.get(&room_id) else {
+            let room_id = room.room_id().to_owned();
+            let Some(info) = rooms.get(&room_id) else {
                 continue;
             };
 
@@ -517,7 +519,13 @@ async fn send_receipts_forever(client: &Client, store: &AsyncProgramStore) {
                     .filter_map(|(thread, new_receipt)| {
                         let old_receipt = sent.get(&(room_id.to_owned(), thread.to_owned()));
                         if Some(new_receipt) != old_receipt {
-                            Some((room_id.to_owned(), thread.to_owned(), new_receipt.to_owned()))
+                            let notifications = open_notifications.remove(&room_id);
+                            Some((
+                                room_id.to_owned(),
+                                thread.to_owned(),
+                                new_receipt.to_owned(),
+                                notifications,
+                            ))
                         } else {
                             None
                         }
@@ -526,8 +534,12 @@ async fn send_receipts_forever(client: &Client, store: &AsyncProgramStore) {
         }
         drop(locked);
 
-        for (room_id, thread, new_receipt) in updates {
+        for (room_id, thread, new_receipt, notifications) in updates {
             use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
+
+            if let Some(notifications) = notifications {
+                notifications.into_iter().for_each(NotificationHandle::close)
+            }
 
             let Some(room) = client.get_room(&room_id) else {
                 continue;
