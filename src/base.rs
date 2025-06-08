@@ -1154,7 +1154,17 @@ impl RoomInfo {
 
     /// Indicates whether this room has unread messages.
     pub fn unreads(&self, settings: &ApplicationSettings) -> UnreadInfo {
-        let last_message = self.messages.last_key_value();
+        let last_message = self.messages.iter().rev().find_map(|(key, msg)| {
+            match &msg.event {
+                MessageEvent::EncryptedOriginal(_) |
+                MessageEvent::EncryptedRedacted(_) |
+                MessageEvent::Original(_, _) |
+                MessageEvent::Redacted(_) |
+                MessageEvent::Local(_, _, _) => Some(key),
+
+                MessageEvent::State(_) | MessageEvent::Edit(_) => None,
+            }
+        });
 
         let last_receipt = self
             .user_receipts
@@ -1189,10 +1199,10 @@ impl RoomInfo {
         };
 
         match (last_message, last_receipt) {
-            (Some(((ts, _), _)), Some((read_ts, _))) => {
+            (Some((ts, _)), Some((read_ts, _))) => {
                 UnreadInfo { unread: ts > read_ts, latest: Some(*ts) }
             },
-            (Some(((ts, _), _)), None) => {
+            (Some((ts, _)), None) => {
                 // If we've never loaded/generated a room's receipt (example,
                 // a newly joined but never viewed room), show it as unread.
                 UnreadInfo { unread: true, latest: Some(*ts) }
