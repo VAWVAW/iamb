@@ -25,7 +25,7 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
           };
-          nativeBuildInputs = [ pkg-config ];
+          nativeBuildInputs = [ pkg-config lld ];
           buildInputs = [ openssl ] ++ lib.optionals stdenv.isDarwin
             (with darwin.apple_sdk.frameworks; [ AppKit Security Cocoa ]);
         };
@@ -39,6 +39,7 @@
             cargo-tarpaulin
             cargo-watch
             sqlite
+            lld
           ];
         };
       });
