@@ -1157,7 +1157,11 @@ impl ListItem<IambInfo> for MemberItem {
         let info = store.application.rooms.get_or_default(self.room_id.clone());
         let user_id = self.member.user_id();
 
-        let (color, name) = store.application.settings.get_user_overrides(self.member.user_id());
+        let (color, name) = store
+            .application
+            .settings
+            .tunables
+            .get_user_overrides(self.member.user_id());
         let color = color.unwrap_or_else(|| super::config::user_color(user_id.as_str()));
 
         let style = if selected {
@@ -1307,7 +1311,7 @@ impl ListItem<IambInfo> for PinnedItem {
             return Span::styled(text, style.fg(Color::Gray)).into();
         };
 
-        let sender = settings.get_user_span(&msg.sender, info);
+        let sender = settings.tunables.get_user_span(&msg.sender, info);
         let sender = Span::styled(sender.content.into_owned(), sender.style.patch(style));
         let time = format!(" [{}]: ", msg.timestamp.show_datetime());
         let body = msg.event.body().lines().next().unwrap_or_default().to_string();
