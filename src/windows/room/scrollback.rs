@@ -15,6 +15,7 @@ use modalkit_ratatui::ScrollActions;
 use ratatui_image::sliced::{SignedPosition, SlicedImage};
 use regex::Regex;
 
+use crate::base::RoomView;
 use crate::message::MessageCursor;
 use crate::prelude::*;
 
@@ -103,7 +104,8 @@ pub struct ScrollbackState {
 
 impl ScrollbackState {
     pub fn new(room_id: OwnedRoomId, thread: Option<OwnedEventId>) -> ScrollbackState {
-        let id = IambBufferId::Room(room_id.to_owned(), thread.clone(), RoomFocus::Scrollback);
+        let id =
+            IambBufferId::Room(room_id.to_owned(), thread.clone().into(), RoomFocus::Scrollback);
         let cursor = MessageCursor::default();
         let viewctx = ViewportContext::default();
         let jumped = HistoryList::default();
@@ -145,6 +147,16 @@ impl ScrollbackState {
             .timestamp
             .clone()
             .or_else(|| self.get_thread(info)?.last_key_value().map(|kv| kv.0.clone()))
+    }
+
+    pub fn get<'a>(&self, info: &'a RoomInfo) -> Option<&'a Message> {
+        let thread = self.get_thread(info);
+
+        if let Some(k) = &self.cursor.timestamp {
+            thread.and_then(|t| t.get(k))
+        } else {
+            thread.and_then(|t| t.last_key_value()).map(|(_, v)| v)
+        }
     }
 
     pub fn get_mut<'a>(&mut self, info: &'a mut RoomInfo) -> Option<&'a mut Message> {
@@ -233,6 +245,8 @@ impl ScrollbackState {
         settings: &ApplicationSettings,
         previews: &PreviewManager,
     ) {
+        let own_user_id = &settings.profile.user_id;
+
         let Some(thread) = self.get_thread(info) else {
             return;
         };
@@ -255,7 +269,15 @@ impl ScrollbackState {
                     let sel = selidx == key;
                     let prev = prevmsg(key, thread);
                     let len = item
-                        .show(prev, sel, self.viewctx.get_width(), info, settings, previews)
+                        .show(
+                            prev,
+                            sel,
+                            self.viewctx.get_width(),
+                            info,
+                            &settings.tunables,
+                            previews,
+                            own_user_id,
+                        )
                         .lines
                         .len();
 
@@ -281,7 +303,15 @@ impl ScrollbackState {
                     let sel = key == selidx;
                     let prev = prevmsg(key, thread);
                     let len = item
-                        .show(prev, sel, self.viewctx.get_width(), info, settings, previews)
+                        .show(
+                            prev,
+                            sel,
+                            self.viewctx.get_width(),
+                            info,
+                            &settings.tunables,
+                            previews,
+                            own_user_id,
+                        )
                         .lines
                         .len();
 
@@ -312,6 +342,8 @@ impl ScrollbackState {
         settings: &ApplicationSettings,
         previews: &PreviewManager,
     ) {
+        let own_user_id = &settings.profile.user_id;
+
         let Some(thread) = self.get_thread(info) else {
             return;
         };
@@ -342,7 +374,15 @@ impl ScrollbackState {
             }
 
             lines += item
-                .show(prev, false, self.viewctx.get_width(), info, settings, previews)
+                .show(
+                    prev,
+                    false,
+                    self.viewctx.get_width(),
+                    info,
+                    &settings.tunables,
+                    previews,
+                    own_user_id,
+                )
                 .height()
                 .max(1);
 
@@ -1021,7 +1061,7 @@ impl Promptable<ProgramContext, ProgramStore, IambInfo> for ScrollbackState {
                         return Err(err);
                     };
                     let room_id = self.room_id.clone();
-                    let id = IambId::Room(room_id, Some(root.to_owned()));
+                    let id = IambId::Room(room_id, RoomView::Thread(root.to_owned()));
                     let open = WindowAction::Switch(OpenTarget::Application(id));
                     Ok(vec![(open.into(), ctx.clone())])
                 }
@@ -1051,6 +1091,7 @@ impl ScrollActions<ProgramContext, ProgramStore, IambInfo> for ScrollbackState {
     ) -> EditResult<EditInfo, IambInfo> {
         let info = store.application.rooms.get_or_default(self.room_id.clone());
         let settings = &store.application.settings;
+        let own_user_id = &settings.profile.user_id;
         let previews = &store.application.previews;
         let mut corner = self.viewctx.corner.clone();
         let thread = self.get_thread(info).ok_or_else(no_msgs)?;
@@ -1079,8 +1120,15 @@ impl ScrollActions<ProgramContext, ProgramStore, IambInfo> for ScrollbackState {
                 for (key, item) in thread.range(..=&corner_key).rev() {
                     let sel = key == cursor_key;
                     let prev = prevmsg(key, thread);
-                    let txt =
-                        item.show(prev, sel, self.viewctx.get_width(), info, settings, previews);
+                    let txt = item.show(
+                        prev,
+                        sel,
+                        self.viewctx.get_width(),
+                        info,
+                        &settings.tunables,
+                        previews,
+                        own_user_id,
+                    );
                     let len = txt.height().max(1);
                     let max = len.saturating_sub(1);
 
@@ -1108,8 +1156,15 @@ impl ScrollActions<ProgramContext, ProgramStore, IambInfo> for ScrollbackState {
 
                 for (key, item) in thread.range(&corner_key..) {
                     let sel = key == cursor_key;
-                    let txt =
-                        item.show(prev, sel, self.viewctx.get_width(), info, settings, previews);
+                    let txt = item.show(
+                        prev,
+                        sel,
+                        self.viewctx.get_width(),
+                        info,
+                        &settings.tunables,
+                        previews,
+                        own_user_id,
+                    );
                     let len = txt.height().max(1);
                     let max = len.saturating_sub(1);
 
@@ -1294,6 +1349,7 @@ impl StatefulWidget for Scrollback<'_> {
 
         let info = self.store.application.rooms.get_or_default(state.room_id.clone());
         let settings = &self.store.application.settings;
+        let own_user_id = &settings.profile.user_id;
         let area = if state.cursor.timestamp.is_some() {
             render_jump_to_recent(area, buf, self.focused)
         } else {
@@ -1384,14 +1440,15 @@ impl StatefulWidget for Scrollback<'_> {
                 foc && sel,
                 state.viewctx.get_width(),
                 info,
-                settings,
+                &settings.tunables,
                 previews,
+                own_user_id,
             );
 
             let incomplete_ok = !full || !sel;
 
             let includes_date_line = item.show_date(prev);
-            let includes_trackbar = item.show_trackbar(prev, info, settings);
+            let includes_trackbar = item.show_trackbar(prev, info, own_user_id);
 
             for (row, line) in txt.lines.into_iter().enumerate() {
                 if sawit && lines.len() >= height && incomplete_ok {
@@ -1470,7 +1527,7 @@ impl StatefulWidget for Scrollback<'_> {
                 let hidden_lines = (area.y as i16 - y).max(0);
 
                 let position = SignedPosition { x: 0, y: -hidden_lines };
-                let image_widget = SlicedImage::new(backend, position);
+                let image_widget = SlicedImage::new(&backend, position);
                 let mut rect: Rect = backend.size().into();
                 rect.x = x;
                 rect.y = (y + hidden_lines) as u16;
@@ -1565,7 +1622,8 @@ mod tests {
             vec![(room_id.clone(), Need {
                 messages: Some(Vec::new()),
                 members: false,
-                pinned: false
+                pinned: false,
+                events: Vec::new()
             })]
         );
 
