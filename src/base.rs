@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::hash::Hash;
+use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -27,6 +28,7 @@ use serde::{
     de::Error as SerdeError,
     de::Visitor,
 };
+use strum::{EnumProperty, VariantArray as _};
 use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
 
@@ -71,7 +73,7 @@ use matrix_sdk::{
     },
 };
 
-use crate::config::TunablesUpdate;
+use crate::config::{TunablesUpdate, TunablesUpdateDiscriminants};
 use crate::preview::PreviewKind;
 use crate::{
     config::ApplicationSettings,
@@ -2426,6 +2428,27 @@ fn complete_cmdarg(
         "verify" => vec![],
         "vertical" | "horizontal" | "aboveleft" | "belowright" | "tab" => {
             complete_cmd(desc.arg.text.as_str(), text, cursor, store)
+        },
+        "set" => {
+            // TODO: improve once #520 is merged
+            let word = text
+                .get_prefix_word_mut(cursor, &MATRIX_ID_WORD)
+                .unwrap_or_else(EditRope::empty);
+            let word = Cow::from(&word);
+
+            TunablesUpdateDiscriminants::VARIANTS
+                .iter()
+                .flat_map(|variant| {
+                    let name = <_ as Into<&'static str>>::into(variant).to_lowercase();
+                    if variant.get_bool("is_bool") == Some(true) {
+                        vec![format!("no{name}"), name]
+                    } else {
+                        vec![name]
+                    }
+                })
+                .filter(|option| option.starts_with(word.deref()))
+                .map(|option| option.to_string())
+                .collect()
         },
         _ => vec![],
     }
