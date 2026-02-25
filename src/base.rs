@@ -71,6 +71,15 @@ use matrix_sdk::{
     },
 };
 
+use crate::config::TunablesUpdate;
+use crate::preview::PreviewKind;
+use crate::{
+    config::ApplicationSettings,
+    message::{Message, MessageEvent, MessageKey, MessageTimeStamp, Messages},
+    notifications::NotificationHandle,
+    preview::PreviewManager,
+    worker::Requester,
+};
 use modalkit::{
     actions::Action,
     editing::{
@@ -96,15 +105,6 @@ use modalkit::{
     key::TerminalKey,
     keybindings::SequenceStatus,
     prelude::{CommandType, MoveDir1D, WordStyle},
-};
-
-use crate::preview::PreviewKind;
-use crate::{
-    config::ApplicationSettings,
-    message::{Message, MessageEvent, MessageKey, MessageTimeStamp, Messages},
-    notifications::NotificationHandle,
-    preview::PreviewManager,
-    worker::Requester,
 };
 
 /// The set of characters used in different Matrix IDs.
@@ -568,6 +568,13 @@ pub enum KeysAction {
     Import(String, String),
 }
 
+/// An action performed on the application settings.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SettingsAction {
+    /// Change some settings.
+    Set(Vec<TunablesUpdate>),
+}
+
 /// An action that the main program loop should.
 ///
 /// See [the commands module][super::commands] for where these are usually created.
@@ -584,6 +591,9 @@ pub enum IambAction {
 
     /// Perform an action on the current space.
     Space(SpaceAction),
+
+    /// Perform an action on the application settings.
+    Settings(SettingsAction),
 
     /// Open a URL.
     OpenLink(String),
@@ -632,6 +642,12 @@ impl From<SpaceAction> for IambAction {
     }
 }
 
+impl From<SettingsAction> for IambAction {
+    fn from(act: SettingsAction) -> Self {
+        IambAction::Settings(act)
+    }
+}
+
 impl From<RoomAction> for IambAction {
     fn from(act: RoomAction) -> Self {
         IambAction::Room(act)
@@ -655,6 +671,7 @@ impl ApplicationAction for IambAction {
             IambAction::Room(..) => SequenceStatus::Break,
             IambAction::OpenLink(..) => SequenceStatus::Break,
             IambAction::Send(..) => SequenceStatus::Break,
+            IambAction::Settings(..) => SequenceStatus::Break,
             IambAction::ToggleScrollbackFocus => SequenceStatus::Break,
             IambAction::Verify(..) => SequenceStatus::Break,
             IambAction::VerifyRequest(..) => SequenceStatus::Break,
@@ -671,6 +688,7 @@ impl ApplicationAction for IambAction {
             IambAction::OpenLink(..) => SequenceStatus::Atom,
             IambAction::Room(..) => SequenceStatus::Atom,
             IambAction::Send(..) => SequenceStatus::Atom,
+            IambAction::Settings(..) => SequenceStatus::Atom,
             IambAction::ToggleScrollbackFocus => SequenceStatus::Atom,
             IambAction::Verify(..) => SequenceStatus::Atom,
             IambAction::VerifyRequest(..) => SequenceStatus::Atom,
@@ -687,6 +705,7 @@ impl ApplicationAction for IambAction {
             IambAction::Room(..) => SequenceStatus::Ignore,
             IambAction::OpenLink(..) => SequenceStatus::Ignore,
             IambAction::Send(..) => SequenceStatus::Ignore,
+            IambAction::Settings(..) => SequenceStatus::Ignore,
             IambAction::ToggleScrollbackFocus => SequenceStatus::Ignore,
             IambAction::Verify(..) => SequenceStatus::Ignore,
             IambAction::VerifyRequest(..) => SequenceStatus::Ignore,
@@ -702,6 +721,7 @@ impl ApplicationAction for IambAction {
             IambAction::Room(..) => false,
             IambAction::Keys(..) => false,
             IambAction::Send(..) => false,
+            IambAction::Settings(..) => false,
             IambAction::OpenLink(..) => false,
             IambAction::ToggleScrollbackFocus => false,
             IambAction::Verify(..) => false,
