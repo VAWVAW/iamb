@@ -21,8 +21,14 @@ use ratatui_image::picker::ProtocolType;
 use serde::de::Error as SerdeError;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize};
-use strum::{EnumDiscriminants, IntoStaticStr, VariantArray};
-use strum_macros::EnumString;
+use strum::{
+    EnumDiscriminants,
+    EnumProperty,
+    EnumString,
+    IntoStaticStr,
+    VariantArray,
+    VariantNames,
+};
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::format::{DefaultFields, Format};
@@ -376,7 +382,7 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString, VariantNames)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "lowercase")]
 #[repr(u8)]
@@ -410,7 +416,7 @@ impl ReadReceiptTrigger {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString, VariantNames)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 #[repr(u8)]
@@ -465,7 +471,7 @@ impl Visitor<'_> for EncryptionIndicatorLocationVisitor {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString, VariantNames)]
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase")]
 pub enum UserDisplayStyle {
@@ -484,7 +490,7 @@ pub enum UserDisplayStyle {
     DisplayName,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, EnumString, VariantNames)]
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase")]
 pub enum SplitDirection {
@@ -843,7 +849,10 @@ impl serde::de::Error for TunablesUpdateError {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
-#[strum_discriminants(derive(IntoStaticStr, VariantArray))]
+#[strum_discriminants(
+    strum(serialize_all = "snake_case"),
+    derive(IntoStaticStr, VariantArray)
+)]
 pub enum SortUpdate {
     Chats(Vec<SortColumn<SortFieldRoom>>),
     Dms(Vec<SortColumn<SortFieldRoom>>),
@@ -880,12 +889,18 @@ impl SortUpdate {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
-#[strum_discriminants(derive(IntoStaticStr, VariantArray))]
+#[strum_discriminants(
+    strum(serialize_all = "snake_case"),
+    derive(IntoStaticStr, EnumProperty, VariantArray)
+)]
 pub enum NotificationsUpdate {
-    Enabled(bool),
     Via(NotifyVia),
-    ShowMessage(bool),
     SoundHint(Option<String>),
+
+    #[strum_discriminants(strum(props(is_bool = true)))]
+    Enabled(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
+    ShowMessage(bool),
 }
 
 impl NotificationsUpdate {
@@ -956,9 +971,9 @@ impl UserDisplayUpdate {
     }
 }
 
-/// This only exists because [`ProtocolType`] isn't [`Eq`].
-// XXX: replace this after https://github.com/ratatui/ratatui-image/pull/194 is merged and released.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// This should always mirrir [`ProtocolType`]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, VariantNames)]
+#[strum(serialize_all = "lowercase")]
 pub enum IambProtocolType {
     Halfblocks,
     Sixel,
@@ -1051,7 +1066,10 @@ impl ImagePreviewUpdate {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
-#[strum_discriminants(derive(IntoStaticStr, VariantArray))]
+#[strum_discriminants(
+    strum(serialize_all = "snake_case"),
+    derive(IntoStaticStr, VariantArray)
+)]
 pub enum EncryptionUpdate {
     Indicator(EncryptionIndicator),
     IndicatorLocation(EncryptionIndicatorLocation),
@@ -1075,7 +1093,10 @@ impl EncryptionUpdate {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
-#[strum_discriminants(derive(IntoStaticStr, VariantArray))]
+#[strum_discriminants(
+    strum(serialize_all = "snake_case"),
+    derive(IntoStaticStr, VariantArray)
+)]
 pub enum TerminalUpdate {
     CursorShape(CursorShape),
 }
@@ -1099,7 +1120,11 @@ impl TerminalUpdate {
 }
 
 /// A update for the [`TunableValues`] after invoking the `:set` command.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
+#[strum_discriminants(
+    strum(serialize_all = "snake_case"),
+    derive(IntoStaticStr, EnumProperty, VariantArray)
+)]
 pub enum TunablesUpdate {
     // multilevel options
     Sort(SortUpdate),
@@ -1122,15 +1147,25 @@ pub enum TunablesUpdate {
     Tabstop(usize),
 
     // bool options
+    #[strum_discriminants(strum(props(is_bool = true)))]
     MessageShortcodeDisplay(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     NormalAfterSend(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     ReactionDisplay(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     ReactionShortcodeDisplay(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     ReadReceiptSend(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     ReadReceiptDisplay(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     TypingNoticeSend(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     TypingNoticeDisplay(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     MessageUserColor(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     Ignorecase(bool),
 }
 
@@ -1519,7 +1554,7 @@ impl Tunables {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString, VariantNames)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 #[repr(u8)]
@@ -1542,7 +1577,7 @@ impl From<CursorShape> for modalkit::crossterm::cursor::SetCursorStyle {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString, VariantNames)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 #[repr(u8)]
