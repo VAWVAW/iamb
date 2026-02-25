@@ -65,7 +65,7 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 use crate::base::{HomeserverAction, KeysAction, SettingsAction};
 use crate::completions::IambCompleter;
-use crate::config::{Iamb, parse_env_logger};
+use crate::config::{Iamb, SettingsFile, parse_env_logger};
 use crate::prelude::*;
 use crate::windows::IambWindow;
 use crate::worker::{ClientWorker, LoginStyle, create_room};
@@ -576,7 +576,7 @@ impl Application {
             },
 
             IambAction::Settings(act) => {
-                self.settings_command(act, store);
+                self.settings_command(act, store)?;
                 None
             },
         };
@@ -684,12 +684,26 @@ impl Application {
         }
     }
 
-    fn settings_command(&mut self, action: SettingsAction, store: &mut ProgramStore) {
+    fn settings_command(
+        &mut self,
+        action: SettingsAction,
+        store: &mut ProgramStore,
+    ) -> IambResult<()> {
         match action {
             SettingsAction::Set(tunables_updates) => {
                 for update in tunables_updates {
                     store.application.settings.update(update);
                 }
+                Ok(())
+            },
+            SettingsAction::Reload(path) => {
+                let path = match path {
+                    None => None,
+                    Some(path) if path.ends_with(".json") => Some(SettingsFile::Json(path)),
+                    Some(path) => Some(SettingsFile::Toml(path)),
+                };
+
+                Ok(store.application.settings.reload(path).map_err(IambError::from)?)
             },
         }
     }
