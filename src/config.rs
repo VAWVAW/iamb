@@ -682,6 +682,12 @@ pub struct Colorscheme {
     pub room_list_unread: Option<Color>,
     pub message_time: Option<Color>,
     pub message_date: Option<Color>,
+    pub message_normal: Option<Color>,
+    pub message_state: Option<Color>,
+    pub message_sticker: Option<Color>,
+    pub message_redacted: Option<Color>,
+    pub message_notice: Option<Color>,
+    pub message_other: Option<Color>,
 }
 
 impl Colorscheme {
@@ -696,6 +702,12 @@ impl Colorscheme {
             room_list_unread: self.room_list_unread.or(other.room_list_unread),
             message_time: self.message_time.or(other.message_time),
             message_date: self.message_date.or(other.message_date),
+            message_normal: self.message_normal.or(other.message_normal),
+            message_state: self.message_state.or(other.message_state),
+            message_sticker: self.message_state.or(other.message_sticker),
+            message_redacted: self.message_redacted.or(other.message_redacted),
+            message_notice: self.message_notice.or(other.message_notice),
+            message_other: self.message_other.or(other.message_other),
         }
     }
 }
@@ -711,6 +723,12 @@ pub struct ColorschemeValues {
     pub room_list_unread: Style,
     pub message_time: Style,
     pub message_date: Style,
+    pub message_normal: Style,
+    pub message_state: Style,
+    pub message_sticker: Style,
+    pub message_redacted: Style,
+    pub message_notice: Style,
+    pub message_other: Style,
 }
 
 impl Colorscheme {
@@ -724,6 +742,12 @@ impl Colorscheme {
         let room_list_unread = self.room_list_unread.map(Into::into).unwrap_or(room_list);
         let message_time = self.message_time.map(Into::into).unwrap_or_default();
         let message_date = self.message_date.map(Into::into).unwrap_or_default();
+        let message_normal = self.message_normal.map(Into::into).unwrap_or_default();
+        let message_state = self.message_state.map(Into::into).unwrap_or(message_normal);
+        let message_sticker = self.message_sticker.map(Into::into).unwrap_or(message_normal);
+        let message_redacted = self.message_redacted.map(Into::into).unwrap_or(message_normal);
+        let message_notice = self.message_notice.map(Into::into).unwrap_or(message_state);
+        let message_other = self.message_other.map(Into::into).unwrap_or(message_normal);
 
         ColorschemeValues {
             border,
@@ -735,6 +759,12 @@ impl Colorscheme {
             room_list_unread,
             message_time,
             message_date,
+            message_normal,
+            message_state,
+            message_sticker,
+            message_redacted,
+            message_notice,
+            message_other,
         }
     }
 }
