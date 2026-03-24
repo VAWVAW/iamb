@@ -715,6 +715,7 @@ pub struct Colorscheme {
     pub message_redacted: Option<Color>,
     pub message_notice: Option<Color>,
     pub message_other: Option<Color>,
+    pub codeblock_background: Option<Color>,
 }
 
 impl Colorscheme {
@@ -735,6 +736,7 @@ impl Colorscheme {
             message_redacted: self.message_redacted.or(other.message_redacted),
             message_notice: self.message_notice.or(other.message_notice),
             message_other: self.message_other.or(other.message_other),
+            codeblock_background: self.codeblock_background.or(other.codeblock_background),
         }
     }
 }
@@ -756,6 +758,7 @@ pub struct ColorschemeValues {
     pub message_redacted: Style,
     pub message_notice: Style,
     pub message_other: Style,
+    pub codeblock_background: Style,
 }
 
 impl Colorscheme {
@@ -775,6 +778,8 @@ impl Colorscheme {
         let message_redacted = self.message_redacted.map(Into::into).unwrap_or(message_normal);
         let message_notice = self.message_notice.map(Into::into).unwrap_or(message_state);
         let message_other = self.message_other.map(Into::into).unwrap_or(message_normal);
+        let codeblock_background =
+            Style::new().bg(self.codeblock_background.unwrap_or(Color::Indexed(236)));
 
         ColorschemeValues {
             border,
@@ -792,6 +797,7 @@ impl Colorscheme {
             message_redacted,
             message_notice,
             message_other,
+            codeblock_background,
         }
     }
 }
