@@ -393,9 +393,39 @@ Entry in a room list like the
 window.
 Defaults to the terminal foreground color.
 .It Sy room_list_unread
-Unread entry in a room list.
+Room list entry with unread muted notifications.
 Defaults to
 .Sy room_list .
+.It Sy room_list_notification
+Room list entry with unread notifications.
+Defaults to
+.Sy room_list_unread .
+.It Sy room_list_mention
+Room list entry with unread mentions.
+Defaults to
+.Sy room_list_notification .
+.It Sy room_list_marked_unread
+Room list entry that is marked as unread.
+Defaults to
+.Sy room_list_notification .
+.It Sy room_list_unread_number
+Textcolor for the number of unread muted notifications.
+Defaults to
+.Dq Sy gray .
+.It Sy room_list_notification_number
+Textcolor for the number of unread notifications.
+Defaults to
+.Dq Sy yellow .
+.It Sy room_list_mention_number
+Textcolor for the number of unread mentions.
+Defaults to
+.Dq Sy red .
+.It Sy room_list_marked_unread_number
+Textcolor for the 
+.Dq Sq U
+that indicates a room is marked as unread.
+Defaults to
+.Dq Sy green .
 .It Sy message_time
 The timestamp to the right of messages.
 Defaults to the terminal foreground color.
