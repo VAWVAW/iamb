@@ -64,11 +64,13 @@ const DEFAULT_MEMBERS_SORT: [SortColumn<SortFieldUser>; 4] = [
     SortColumn(SortFieldUser::UserId, SortOrder::Ascending),
 ];
 
-const DEFAULT_ROOM_SORT: [SortColumn<SortFieldRoom>; 5] = [
+const DEFAULT_ROOM_SORT: [SortColumn<SortFieldRoom>; 7] = [
     SortColumn(SortFieldRoom::Favorite, SortOrder::Ascending),
     SortColumn(SortFieldRoom::Invite, SortOrder::Ascending),
     SortColumn(SortFieldRoom::LowPriority, SortOrder::Ascending),
-    SortColumn(SortFieldRoom::Unread, SortOrder::Ascending),
+    SortColumn(SortFieldRoom::Mentions, SortOrder::Ascending),
+    SortColumn(SortFieldRoom::Notifications, SortOrder::Ascending),
+    SortColumn(SortFieldRoom::Recent, SortOrder::Ascending),
     SortColumn(SortFieldRoom::Name, SortOrder::Ascending),
 ];
 
@@ -746,6 +748,13 @@ pub struct Colorscheme {
     pub tab_title_unfocused: Option<Color>,
     pub room_list: Option<Color>,
     pub room_list_unread: Option<Color>,
+    pub room_list_notification: Option<Color>,
+    pub room_list_mention: Option<Color>,
+    pub room_list_marked_unread: Option<Color>,
+    pub room_list_unread_number: Option<Color>,
+    pub room_list_notification_number: Option<Color>,
+    pub room_list_mention_number: Option<Color>,
+    pub room_list_marked_unread_number: Option<Color>,
     pub message_time: Option<Color>,
     pub message_date: Option<Color>,
     pub message_normal: Option<Color>,
@@ -767,6 +776,19 @@ impl Colorscheme {
             tab_title_unfocused: self.tab_title_unfocused.or(other.tab_title_unfocused),
             room_list: self.room_list.or(other.room_list),
             room_list_unread: self.room_list_unread.or(other.room_list_unread),
+            room_list_notification: self.room_list_notification.or(other.room_list_notification),
+            room_list_mention: self.room_list_mention.or(other.room_list_mention),
+            room_list_marked_unread: self.room_list_marked_unread.or(other.room_list_marked_unread),
+            room_list_unread_number: self.room_list_unread_number.or(other.room_list_unread_number),
+            room_list_notification_number: self
+                .room_list_notification_number
+                .or(other.room_list_notification_number),
+            room_list_mention_number: self
+                .room_list_mention_number
+                .or(other.room_list_mention_number),
+            room_list_marked_unread_number: self
+                .room_list_marked_unread_number
+                .or(other.room_list_marked_unread_number),
             message_time: self.message_time.or(other.message_time),
             message_date: self.message_date.or(other.message_date),
             message_normal: self.message_normal.or(other.message_normal),
@@ -789,6 +811,13 @@ pub struct ColorschemeValues {
     pub tab_title_unfocused: Style,
     pub room_list: Style,
     pub room_list_unread: Style,
+    pub room_list_notification: Style,
+    pub room_list_mention: Style,
+    pub room_list_marked_unread: Style,
+    pub room_list_unread_number: Style,
+    pub room_list_notification_number: Style,
+    pub room_list_mention_number: Style,
+    pub room_list_marked_unread_number: Style,
     pub message_time: Style,
     pub message_date: Style,
     pub message_normal: Style,
@@ -807,8 +836,24 @@ impl Colorscheme {
         let window_title = self.window_title.map(Into::into).unwrap_or_default();
         let tab_title = self.tab_title.map(Into::into).unwrap_or_default();
         let tab_title_unfocused = self.tab_title_unfocused.map(Into::into).unwrap_or(tab_title);
+
         let room_list = self.room_list.map(Into::into).unwrap_or_default();
         let room_list_unread = self.room_list_unread.map(Into::into).unwrap_or(room_list);
+        let room_list_notification =
+            self.room_list_notification.map(Into::into).unwrap_or(room_list_unread);
+        let room_list_mention =
+            self.room_list_mention.map(Into::into).unwrap_or(room_list_notification);
+        let room_list_marked_unread = self
+            .room_list_marked_unread
+            .map(Into::into)
+            .unwrap_or(room_list_notification);
+        let room_list_unread_number = self.room_list_unread_number.unwrap_or(Color::Gray).into();
+        let room_list_notification_number =
+            self.room_list_notification_number.unwrap_or(Color::Yellow).into();
+        let room_list_mention_number = self.room_list_mention_number.unwrap_or(Color::Red).into();
+        let room_list_marked_unread_number =
+            self.room_list_marked_unread_number.unwrap_or(Color::Green).into();
+
         let message_time = self.message_time.map(Into::into).unwrap_or_default();
         let message_date = self.message_date.map(Into::into).unwrap_or_default();
         let message_normal = self.message_normal.map(Into::into).unwrap_or_default();
@@ -828,6 +873,13 @@ impl Colorscheme {
             tab_title_unfocused,
             room_list,
             room_list_unread,
+            room_list_notification,
+            room_list_mention,
+            room_list_marked_unread,
+            room_list_unread_number,
+            room_list_notification_number,
+            room_list_mention_number,
+            room_list_marked_unread_number,
             message_time,
             message_date,
             message_normal,
@@ -955,6 +1007,13 @@ pub enum ColorsUpdate {
 
     RoomList(Option<Color>),
     RoomListUnread(Option<Color>),
+    RoomListNotification(Option<Color>),
+    RoomListMention(Option<Color>),
+    RoomListMarkedUnread(Option<Color>),
+    RoomListUnreadNumber(Option<Color>),
+    RoomListNotificationNumber(Option<Color>),
+    RoomListMentionNumber(Option<Color>),
+    RoomListMarkedUnreadNumber(Option<Color>),
     MessageTime(Option<Color>),
     MessageDate(Option<Color>),
     MessageNormal(Option<Color>),
@@ -982,6 +1041,13 @@ impl ColorsUpdate {
 
             "roomlist" => Self::RoomList(value),
             "roomlistunread" => Self::RoomListUnread(value),
+            "roomlistnotification" => Self::RoomListNotification(value),
+            "roomlistmention" => Self::RoomListMention(value),
+            "roomlistmarkedunread" => Self::RoomListMarkedUnread(value),
+            "roomlistunreadnumber" => Self::RoomListUnreadNumber(value),
+            "roomlistnotificationnumber" => Self::RoomListNotificationNumber(value),
+            "roomlistmentionnumber" => Self::RoomListMentionNumber(value),
+            "roomlistmarkedunreadnumber" => Self::RoomListMarkedUnreadNumber(value),
 
             "messagetime" => Self::MessageTime(value),
             "messagedate" => Self::MessageDate(value),
@@ -2272,6 +2338,36 @@ impl ApplicationSettings {
                     ColorsUpdate::RoomListUnread(color) => {
                         self.tunables.colors.room_list_unread =
                             color.map(Into::into).unwrap_or(self.tunables.colors.room_list)
+                    },
+                    ColorsUpdate::RoomListNotification(color) => {
+                        self.tunables.colors.room_list_notification =
+                            color.map(Into::into).unwrap_or(self.tunables.colors.room_list_unread)
+                    },
+                    ColorsUpdate::RoomListMention(color) => {
+                        self.tunables.colors.room_list_mention = color
+                            .map(Into::into)
+                            .unwrap_or(self.tunables.colors.room_list_notification)
+                    },
+                    ColorsUpdate::RoomListMarkedUnread(color) => {
+                        self.tunables.colors.room_list_marked_unread = color
+                            .map(Into::into)
+                            .unwrap_or(self.tunables.colors.room_list_notification)
+                    },
+                    ColorsUpdate::RoomListUnreadNumber(color) => {
+                        self.tunables.colors.room_list_unread_number =
+                            color.unwrap_or(Color::Gray).into()
+                    },
+                    ColorsUpdate::RoomListNotificationNumber(color) => {
+                        self.tunables.colors.room_list_notification_number =
+                            color.unwrap_or(Color::Yellow).into()
+                    },
+                    ColorsUpdate::RoomListMentionNumber(color) => {
+                        self.tunables.colors.room_list_mention_number =
+                            color.unwrap_or(Color::Red).into()
+                    },
+                    ColorsUpdate::RoomListMarkedUnreadNumber(color) => {
+                        self.tunables.colors.room_list_marked_unread_number =
+                            color.unwrap_or(Color::Green).into()
                     },
 
                     ColorsUpdate::MessageTime(color) => {
