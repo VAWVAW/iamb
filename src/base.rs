@@ -15,6 +15,7 @@ use matrix_sdk::ruma::events::room::message::{
     RoomMessageEvent,
     RoomMessageEventContentWithoutRelation,
 };
+use ratatui::style::Style;
 use matrix_sdk::ruma::events::room::redaction::{
     OriginalSyncRoomRedactionEvent,
     SyncRoomRedactionEvent,
@@ -999,12 +1000,22 @@ pub struct UnreadInfo {
 }
 
 impl UnreadInfo {
-    pub fn is_unread(&self) -> bool {
-        self.unread_mark || self.unread_notifications > 0 || self.unread_mentions > 0
-    }
-
     pub fn latest(&self) -> Option<&MessageTimeStamp> {
         self.latest.as_ref()
+    }
+
+    pub fn get_style(&self, tunables: &TunableValues) -> Style {
+        if self.unread_mark {
+            tunables.colors.room_list_marked_unread
+        } else if self.unread_mentions > 0 {
+            tunables.colors.room_list_mention
+        } else if self.unread_notifications > 0 {
+            tunables.colors.room_list_notification
+        } else if self.unread_messages > 0 {
+            tunables.colors.room_list_unread
+        } else {
+            tunables.colors.room_list
+        }
     }
 }
 

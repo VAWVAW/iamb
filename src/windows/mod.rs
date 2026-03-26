@@ -9,6 +9,7 @@
 
 use std::cmp::Ord;
 use std::fmt::{self};
+use crate::config::TunableValues;
 
 use feruca::Collator;
 use matrix_sdk::room::RoomMember;
@@ -70,17 +71,21 @@ fn name_unreads_labels<'a>(
     unread: &UnreadInfo,
     room: &MatrixRoom,
     style: Style,
+    tunables: &TunableValues,
 ) -> (Span<'static>, Span<'a>, Vec<Vec<Span<'static>>>) {
     let (value, number_style) = if unread.unread_mentions > 0 {
-        (unread.unread_mentions + unread.unread_notifications, Color::Red)
+        (
+            unread.unread_mentions + unread.unread_notifications,
+            tunables.colors.room_list_mention_number,
+        )
     } else if unread.unread_notifications > 0 {
-        (unread.unread_notifications, Color::Yellow)
+        (unread.unread_notifications, tunables.colors.room_list_notification_number)
     } else {
-        (unread.unread_messages, Color::Gray)
+        (unread.unread_messages, tunables.colors.room_list_unread_number)
     };
 
     let unreads = if unread.unread_mark {
-        Span::styled("  U ", Color::Green)
+        Span::styled("  U ", tunables.colors.room_list_marked_unread_number)
     } else if value > 99 {
         Span::styled("99+ ", number_style)
     } else if value == 0 {
@@ -1056,15 +1061,15 @@ impl ListItem<IambInfo> for GenericChatItem {
         _: &ViewportContext<ListCursor>,
         store: &mut ProgramStore,
     ) -> Text<'_> {
-        let style = if self.unread.is_unread() {
-            store.application.settings.tunables.colors.room_list_unread
-        } else {
-            store.application.settings.tunables.colors.room_list
-        };
-
+        let style = self.unread.get_style(&store.application.settings.tunables);
         let style = selected_style(selected, style);
-        let (unreads, name, mut labels) =
-            name_unreads_labels(&self.name, &self.unread, self.room(), style);
+        let (unreads, name, mut labels) = name_unreads_labels(
+            &self.name,
+            &self.unread,
+            self.room(),
+            style,
+            &store.application.settings.tunables,
+        );
         let mut spans = vec![unreads, name];
 
         labels.push(if self.is_dm {
@@ -1189,14 +1194,15 @@ impl ListItem<IambInfo> for RoomItem {
         _: &ViewportContext<ListCursor>,
         store: &mut ProgramStore,
     ) -> Text<'_> {
-        let style = if self.unread.is_unread() {
-            store.application.settings.tunables.colors.room_list_unread
-        } else {
-            store.application.settings.tunables.colors.room_list
-        };
+        let style = self.unread.get_style(&store.application.settings.tunables);
         let style = selected_style(selected, style);
-        let (unreads, name, mut labels) =
-            name_unreads_labels(&self.name, &self.unread, self.room(), style);
+        let (unreads, name, mut labels) = name_unreads_labels(
+            &self.name,
+            &self.unread,
+            self.room(),
+            style,
+            &store.application.settings.tunables,
+        );
         let mut spans = vec![unreads, name];
 
         if let Some(tags) = &self.tags() {
@@ -1312,14 +1318,15 @@ impl ListItem<IambInfo> for DirectItem {
         _: &ViewportContext<ListCursor>,
         store: &mut ProgramStore,
     ) -> Text<'_> {
-        let style = if self.unread.is_unread() {
-            store.application.settings.tunables.colors.room_list_unread
-        } else {
-            store.application.settings.tunables.colors.room_list
-        };
+        let style = self.unread.get_style(&store.application.settings.tunables);
         let style = selected_style(selected, style);
-        let (unreads, name, mut labels) =
-            name_unreads_labels(&self.name, &self.unread, self.room(), style);
+        let (unreads, name, mut labels) = name_unreads_labels(
+            &self.name,
+            &self.unread,
+            self.room(),
+            style,
+            &store.application.settings.tunables,
+        );
         let mut spans = vec![unreads, name];
 
         if let Some(tags) = &self.tags() {
