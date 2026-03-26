@@ -60,6 +60,13 @@ pub enum ColorsUpdate {
 
     RoomList(Option<Color>),
     RoomListUnread(Option<Color>),
+    RoomListNotification(Option<Color>),
+    RoomListMention(Option<Color>),
+    RoomListMarkedUnread(Option<Color>),
+    RoomListUnreadNumber(Option<Color>),
+    RoomListNotificationNumber(Option<Color>),
+    RoomListMentionNumber(Option<Color>),
+    RoomListMarkedUnreadNumber(Option<Color>),
     MessageTime(Option<Color>),
     MessageDate(Option<Color>),
     MessageNormal(Option<Color>),
@@ -87,6 +94,13 @@ impl ColorsUpdate {
 
             "roomlist" => Self::RoomList(value),
             "roomlistunread" => Self::RoomListUnread(value),
+            "roomlistnotification" => Self::RoomListNotification(value),
+            "roomlistmention" => Self::RoomListMention(value),
+            "roomlistmarkedunread" => Self::RoomListMarkedUnread(value),
+            "roomlistunreadnumber" => Self::RoomListUnreadNumber(value),
+            "roomlistnotificationnumber" => Self::RoomListNotificationNumber(value),
+            "roomlistmentionnumber" => Self::RoomListMentionNumber(value),
+            "roomlistmarkedunreadnumber" => Self::RoomListMarkedUnreadNumber(value),
 
             "messagetime" => Self::MessageTime(value),
             "messagedate" => Self::MessageDate(value),
@@ -806,6 +820,36 @@ impl ApplicationSettings {
                     ColorsUpdate::RoomListUnread(color) => {
                         self.tunables.colors.room_list_unread =
                             color.map(Into::into).unwrap_or(self.tunables.colors.room_list)
+                    },
+                    ColorsUpdate::RoomListNotification(color) => {
+                        self.tunables.colors.room_list_notification =
+                            color.map(Into::into).unwrap_or(self.tunables.colors.room_list_unread)
+                    },
+                    ColorsUpdate::RoomListMention(color) => {
+                        self.tunables.colors.room_list_mention = color
+                            .map(Into::into)
+                            .unwrap_or(self.tunables.colors.room_list_notification)
+                    },
+                    ColorsUpdate::RoomListMarkedUnread(color) => {
+                        self.tunables.colors.room_list_marked_unread = color
+                            .map(Into::into)
+                            .unwrap_or(self.tunables.colors.room_list_notification)
+                    },
+                    ColorsUpdate::RoomListUnreadNumber(color) => {
+                        self.tunables.colors.room_list_unread_number =
+                            color.unwrap_or(Color::Gray).into()
+                    },
+                    ColorsUpdate::RoomListNotificationNumber(color) => {
+                        self.tunables.colors.room_list_notification_number =
+                            color.unwrap_or(Color::Yellow).into()
+                    },
+                    ColorsUpdate::RoomListMentionNumber(color) => {
+                        self.tunables.colors.room_list_mention_number =
+                            color.unwrap_or(Color::Red).into()
+                    },
+                    ColorsUpdate::RoomListMarkedUnreadNumber(color) => {
+                        self.tunables.colors.room_list_marked_unread_number =
+                            color.unwrap_or(Color::Green).into()
                     },
 
                     ColorsUpdate::MessageTime(color) => {

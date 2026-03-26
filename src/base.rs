@@ -45,6 +45,7 @@ use modalkit::env::vim::command::{CommandContext, VimCommand, VimCommandMachine}
 use modalkit::env::vim::keybindings::VimMachine;
 use modalkit::errors::UIResult;
 use modalkit::keybindings::SequenceStatus;
+use ratatui::style::Style;
 use serde::de::Error as SerdeError;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -1075,6 +1076,20 @@ impl UnreadInfo {
 
     pub fn latest(&self) -> Option<&MessageTimeStamp> {
         self.latest.as_ref()
+    }
+
+    pub fn get_style(&self, tunables: &TunableValues) -> Style {
+        if self.unread_mark {
+            tunables.colors.room_list_marked_unread
+        } else if self.unread_mentions > 0 {
+            tunables.colors.room_list_mention
+        } else if self.unread_notifications > 0 {
+            tunables.colors.room_list_notification
+        } else if self.unread_messages > 0 {
+            tunables.colors.room_list_unread
+        } else {
+            tunables.colors.room_list
+        }
     }
 }
 
