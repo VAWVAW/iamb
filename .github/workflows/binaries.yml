@@ -1,7 +1,7 @@
 on:
   push:
     branches:
-      - main
+      - dev
 
 name: Binaries
 
@@ -36,8 +36,8 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Install Rust (stable)
-      uses: dtolnay/rust-toolchain@stable
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@1.92
       with:
           targets: ${{ env.TARGET }}
     - name: Install C cross-compilation toolchain
@@ -63,7 +63,9 @@ jobs:
     - name: Run sccache-cache
       uses: mozilla-actions/sccache-action@v0.0.9
     - name: 'Build: binary'
-      run: cargo +stable build --release --locked --target ${{ env.TARGET }}
+      run: |
+        rustup target add ${{ env.TARGET }}
+        cargo build --release --locked --target ${{ env.TARGET }}
     - name: 'Upload: binary'
       uses: actions/upload-artifact@v4
       with:
@@ -74,8 +76,8 @@ jobs:
     - name: 'Package: deb'
       if: matrix.platform == 'ubuntu-latest'
       run: |
-        cargo +stable install --locked cargo-deb
-        cargo +stable deb --no-strip --target ${{ env.TARGET }}
+        cargo install --locked cargo-deb
+        cargo deb --no-strip --target ${{ env.TARGET }}
     - name: 'Upload: deb'
       if: matrix.platform == 'ubuntu-latest'
       uses: actions/upload-artifact@v4
@@ -85,8 +87,8 @@ jobs:
     - name: 'Package: rpm'
       if: matrix.platform == 'ubuntu-latest'
       run: |
-        cargo +stable install --locked cargo-generate-rpm
-        cargo +stable generate-rpm --target ${{ env.TARGET }}
+        cargo install --locked cargo-generate-rpm
+        cargo generate-rpm --target ${{ env.TARGET }}
     - name: 'Upload: rpm'
       if: matrix.platform == 'ubuntu-latest'
       uses: actions/upload-artifact@v4
