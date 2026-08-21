@@ -32,6 +32,7 @@ use crate::base::{
     SortFieldUser,
 };
 use crate::config::{
+    ColorsUpdateDiscriminants,
     CursorShape,
     EncryptionIndicator,
     EncryptionUpdateDiscriminants,
@@ -515,6 +516,37 @@ fn complete_iamb_set(arg: &str, store: &ChatStore) -> Vec<String> {
                     })
                     .collect()
             },
+            "colors.border" |
+            "colors.borderunfocused" |
+            "colors.windowtitle" |
+            "colors.tabtitle" |
+            "colors.tabtitleunfocused" |
+            "colors.roomlist" |
+            "colors.roomlistunread" |
+            "colors.roomlistnotification" |
+            "colors.roomlistmention" |
+            "colors.roomlistmarkedunread" |
+            "colors.roomlistunreadnumber" |
+            "colors.roomlistnotificationnumber" |
+            "colors.roomlistmentionnumber" |
+            "colors.roomlistmarkedunreadnumber" |
+            "colors.messagetime" |
+            "colors.messagedate" |
+            "colors.messagenormal" |
+            "colors.messagestate" |
+            "colors.messageredacted" |
+            "colors.messagenotice" |
+            "colors.messageother" |
+            "colors.codeblockbackground" => {
+                complete_colors(value)
+                    .into_iter()
+                    .map(|mut s| {
+                        s.insert(0, '=');
+                        s.insert_str(0, orig_option);
+                        s
+                    })
+                    .collect()
+            },
             "encryption.indicator" => {
                 complete_choices(value, EncryptionIndicator::VARIANTS)
                     .into_iter()
@@ -619,6 +651,16 @@ fn complete_iamb_set(arg: &str, store: &ChatStore) -> Vec<String> {
         orig_option.retain(|c| c != '_');
 
         match orig_option.split_once('.') {
+            Some(("colors", _)) => {
+                ColorsUpdateDiscriminants::VARIANTS
+                    .iter()
+                    .map(|variant| {
+                        let name = <_ as Into<&'static str>>::into(variant);
+                        format!("colors.{name}")
+                    })
+                    .filter(|option| option.starts_with(&orig_option) | option.starts_with(arg))
+                    .collect()
+            },
             Some(("sort", _)) => {
                 SortUpdateDiscriminants::VARIANTS
                     .iter()
