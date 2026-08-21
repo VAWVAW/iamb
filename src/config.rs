@@ -946,6 +946,61 @@ impl serde::de::Error for TunablesUpdateError {
     strum(serialize_all = "snake_case"),
     derive(IntoStaticStr, VariantArray)
 )]
+pub enum ColorsUpdate {
+    Border(Option<Color>),
+    BorderUnfocused(Option<Color>),
+    WindowTitle(Option<Color>),
+    TabTitle(Option<Color>),
+    TabTitleUnfocused(Option<Color>),
+
+    RoomList(Option<Color>),
+    RoomListUnread(Option<Color>),
+    MessageTime(Option<Color>),
+    MessageDate(Option<Color>),
+    MessageNormal(Option<Color>),
+    MessageState(Option<Color>),
+    MessageRedacted(Option<Color>),
+    MessageNotice(Option<Color>),
+    MessageOther(Option<Color>),
+    CodeblockBackground(Option<Color>),
+}
+
+impl ColorsUpdate {
+    fn new(option: &str, value: &str) -> Result<Self, TunablesUpdateError> {
+        let value = if value.is_empty() {
+            None
+        } else {
+            Some(Color::from_str(value)?)
+        };
+
+        Ok(match option {
+            "border" => Self::Border(value),
+            "borderunfocused" => Self::BorderUnfocused(value),
+            "windowtitle" => Self::WindowTitle(value),
+            "tabtitle" => Self::TabTitle(value),
+            "tabtitleunfocused" => Self::TabTitleUnfocused(value),
+
+            "roomlist" => Self::RoomList(value),
+            "roomlistunread" => Self::RoomListUnread(value),
+
+            "messagetime" => Self::MessageTime(value),
+            "messagedate" => Self::MessageDate(value),
+            "messagenormal" => Self::MessageNormal(value),
+            "messagestate" => Self::MessageState(value),
+            "messageredacted" => Self::MessageRedacted(value),
+            "messagenotice" => Self::MessageNotice(value),
+            "messageother" => Self::MessageOther(value),
+            "codeblockbackground" => Self::CodeblockBackground(value),
+            _ => return Err(TunablesUpdateError::UnknownOption),
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
+#[strum_discriminants(
+    strum(serialize_all = "snake_case"),
+    derive(IntoStaticStr, VariantArray)
+)]
 pub enum SortUpdate {
     Chats(Vec<SortColumn<SortFieldRoom>>),
     Dms(Vec<SortColumn<SortFieldRoom>>),
@@ -1221,6 +1276,7 @@ impl TerminalUpdate {
 )]
 pub enum TunablesUpdate {
     // multilevel options
+    Colors(ColorsUpdate),
     Sort(SortUpdate),
     Notifications(NotificationsUpdate),
     Users(OwnedUserId, UserDisplayUpdate),
@@ -1272,6 +1328,14 @@ impl TunablesUpdate {
     pub fn new(mut option: String, value: Option<&str>) -> Result<Self, TunablesUpdateError> {
         option.retain(|c| c != '_');
 
+        // colors
+        if let Some(colors_option) = option.strip_prefix("colors.") {
+            let Some(value) = value else {
+                return Err(TunablesUpdateError::NoArguments);
+            };
+
+            return Ok(Self::Colors(ColorsUpdate::new(colors_option, value)?));
+        }
         // sort options
         if let Some(sort_option) = option.strip_prefix("sort.") {
             let Some(value) = value else {
@@ -2102,6 +2166,69 @@ impl ApplicationSettings {
                         .reload(update.filter)
                         .expect("cannot update appending tracing logger");
                     self.tunables.log_level = update.directives;
+                }
+            },
+            TunablesUpdate::Colors(colors_update) => {
+                match colors_update {
+                    ColorsUpdate::Border(color) => {
+                        self.tunables.colors.border = color.map(Into::into).unwrap_or_default()
+                    },
+                    ColorsUpdate::BorderUnfocused(color) => {
+                        self.tunables.colors.border_unfocused =
+                            color.map(Into::into).unwrap_or(self.tunables.colors.border)
+                    },
+                    ColorsUpdate::WindowTitle(color) => {
+                        self.tunables.colors.window_title =
+                            color.map(Into::into).unwrap_or_default()
+                    },
+                    ColorsUpdate::TabTitle(color) => {
+                        self.tunables.colors.tab_title = color.map(Into::into).unwrap_or_default()
+                    },
+                    ColorsUpdate::TabTitleUnfocused(color) => {
+                        self.tunables.colors.tab_title_unfocused =
+                            color.map(Into::into).unwrap_or(self.tunables.colors.tab_title)
+                    },
+
+                    ColorsUpdate::RoomList(color) => {
+                        self.tunables.colors.room_list = color.map(Into::into).unwrap_or_default()
+                    },
+                    ColorsUpdate::RoomListUnread(color) => {
+                        self.tunables.colors.room_list_unread =
+                            color.map(Into::into).unwrap_or(self.tunables.colors.room_list)
+                    },
+
+                    ColorsUpdate::MessageTime(color) => {
+                        self.tunables.colors.message_time =
+                            color.map(Into::into).unwrap_or_default()
+                    },
+                    ColorsUpdate::MessageDate(color) => {
+                        self.tunables.colors.message_date =
+                            color.map(Into::into).unwrap_or_default()
+                    },
+                    ColorsUpdate::MessageNormal(color) => {
+                        self.tunables.colors.message_normal =
+                            color.map(Into::into).unwrap_or_default()
+                    },
+                    ColorsUpdate::MessageState(color) => {
+                        self.tunables.colors.message_state =
+                            color.map(Into::into).unwrap_or(self.tunables.colors.message_normal)
+                    },
+                    ColorsUpdate::MessageRedacted(color) => {
+                        self.tunables.colors.message_redacted =
+                            color.map(Into::into).unwrap_or(self.tunables.colors.message_normal)
+                    },
+                    ColorsUpdate::MessageNotice(color) => {
+                        self.tunables.colors.message_notice =
+                            color.map(Into::into).unwrap_or(self.tunables.colors.message_state)
+                    },
+                    ColorsUpdate::MessageOther(color) => {
+                        self.tunables.colors.message_other =
+                            color.map(Into::into).unwrap_or(self.tunables.colors.message_normal)
+                    },
+                    ColorsUpdate::CodeblockBackground(color) => {
+                        self.tunables.colors.codeblock_background =
+                            Style::new().bg(color.unwrap_or(Color::Indexed(236)))
+                    },
                 }
             },
             TunablesUpdate::ImagePreview(image_preview_update) => {
