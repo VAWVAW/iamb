@@ -751,7 +751,7 @@ impl Application {
         match action {
             SettingsAction::Set(tunables_updates) => {
                 for update in tunables_updates {
-                    store.application.settings.update(update);
+                    store.application.settings.update(update, &mut store.application.previews);
                 }
                 Ok(())
             },
@@ -762,7 +762,11 @@ impl Application {
                     Some(path) => Some(SettingsFile::Toml(path)),
                 };
 
-                Ok(store.application.settings.reload(path).map_err(IambError::from)?)
+                Ok(store
+                    .application
+                    .settings
+                    .reload(path, &mut store.application.previews)
+                    .map_err(IambError::from)?)
             },
         }
     }

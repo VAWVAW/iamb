@@ -34,6 +34,7 @@ use modalkit::keybindings::InputKey;
 use modalkit::prelude::Axis;
 
 use crate::base::{SortRoomVisitor, SortUserVisitor};
+use crate::preview::PreviewManager;
 
 use super::base::{
     IambError,
@@ -721,7 +722,7 @@ pub struct Notifications {
     pub sound_hint: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct ImagePreviewValues {
     pub enabled: bool,
     pub lazy_load: bool,
@@ -748,7 +749,7 @@ impl ImagePreview {
     }
 }
 
-#[derive(Clone, Copy, Deserialize, Debug)]
+#[derive(Clone, Copy, Deserialize, Debug, PartialEq)]
 pub struct ImagePreviewSize {
     pub width: usize,
     pub height: usize,
@@ -760,7 +761,7 @@ impl Default for ImagePreviewSize {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Deserialize, Default, PartialEq)]
 pub struct ImagePreviewProtocolValues {
     pub r#type: Option<ProtocolType>,
     pub filter: Option<FilterType>,
@@ -832,6 +833,9 @@ impl Eq for LogLevelUpdate {}
 pub enum TunablesUpdateError {
     #[error("Unknown option")]
     UnknownOption,
+
+    #[error("Invalid argument")]
+    InvalidArgument,
 
     #[error(transparent)]
     LogLevel(#[from] tracing_subscriber::filter::ParseError),
@@ -975,6 +979,68 @@ impl UserDisplayUpdate {
     }
 }
 
+/// This only exists because [`ProtocolType`] isn't [`Eq`].
+// XXX: replace this after https://github.com/ratatui/ratatui-image/pull/194 is merged and released.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum IambProtocolType {
+    Halfblocks,
+    Sixel,
+    Kitty,
+    Iterm2,
+}
+
+impl From<IambProtocolType> for ProtocolType {
+    fn from(value: IambProtocolType) -> Self {
+        match value {
+            IambProtocolType::Halfblocks => Self::Halfblocks,
+            IambProtocolType::Sixel => Self::Sixel,
+            IambProtocolType::Kitty => Self::Kitty,
+            IambProtocolType::Iterm2 => Self::Iterm2,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, EnumDiscriminants)]
+#[strum_discriminants(derive(IntoStaticStr, VariantArray))]
+pub enum ImagePreviewUpdate {
+    Width(usize),
+    Height(usize),
+    ProtocolType(IambProtocolType),
+
+    /// Reload the image previews without chaning a setting (used by `:reload`)
+    Reload,
+}
+
+impl ImagePreviewUpdate {
+    fn new(option: &str, value: &str) -> Result<Self, TunablesUpdateError> {
+        let res = match option {
+            "size.width" => {
+                let width = usize::from_str(value)?;
+                Self::Width(width)
+            },
+            "size.height" => {
+                let height = usize::from_str(value)?;
+                Self::Height(height)
+            },
+            "protocol.type" => {
+                let protocol_type = match value {
+                    "sixel" => IambProtocolType::Sixel,
+                    "kitty" => IambProtocolType::Kitty,
+                    "iterm2" => IambProtocolType::Iterm2,
+                    "halfblocks" => IambProtocolType::Halfblocks,
+                    _ => return Err(TunablesUpdateError::InvalidArgument),
+                };
+
+                Self::ProtocolType(protocol_type)
+            },
+
+            _ => return Err(TunablesUpdateError::UnknownOption),
+        };
+
+        Ok(res)
+    }
+}
+
 /// A update for the [`TunableValues`] after invoking the `:set` command.
 #[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(IntoStaticStr, EnumProperty, VariantArray))]
@@ -983,6 +1049,7 @@ pub enum TunablesUpdate {
     Sort(SortUpdate),
     Notifications(NotificationsUpdate),
     Users(OwnedUserId, UserDisplayUpdate),
+    ImagePreview(ImagePreviewUpdate),
 
     // value options
     LogLevel(Box<LogLevelUpdate>),
@@ -1018,16 +1085,13 @@ pub enum TunablesUpdate {
 
     // TODO: this might be complicated with the panic hook
     // Mouse(Mouse),
-
-    // TODO: This will be possible/easier after #464 lands
-    // ImagePreview(Option<ImagePreviewValues>),
 }
 
 impl TunablesUpdate {
     pub fn new(mut option: String, value: Option<&str>) -> Result<Self, TunablesUpdateError> {
         option.retain(|c| c != '_');
 
-        // multilevel options
+        // sort options
         if let Some(sort_option) = option.strip_prefix("sort.") {
             let Some(value) = value else {
                 return Err(TunablesUpdateError::NoArguments);
@@ -1035,9 +1099,11 @@ impl TunablesUpdate {
 
             return Ok(Self::Sort(SortUpdate::new(sort_option, value)?));
         }
+        // notifications
         if let Some(notification_option) = option.strip_prefix("notifications.") {
             return Ok(Self::Notifications(NotificationsUpdate::new(notification_option, value)?));
         }
+        // user overrides
         if let Some(users_option) = option.strip_prefix("users.") {
             let Some((user_id, user_option)) = users_option.rsplit_once('.') else {
                 return Err(TunablesUpdateError::UnknownOption);
@@ -1052,6 +1118,14 @@ impl TunablesUpdate {
             let update = UserDisplayUpdate::new(user_option, value)?;
 
             return Ok(Self::Users(user_id, update));
+        }
+        // image previews
+        if let Some(image_preview_option) = option.strip_prefix("imagepreview.") {
+            let Some(value) = value else {
+                return Err(TunablesUpdateError::NoArguments);
+            };
+
+            return Ok(Self::ImagePreview(ImagePreviewUpdate::new(image_preview_option, value)?));
         }
 
         let res = match option.as_str() {
@@ -1735,7 +1809,11 @@ impl ApplicationSettings {
         Ok(settings)
     }
 
-    pub fn reload(&mut self, path: Option<SettingsFile>) -> Result<(), ReloadError> {
+    pub fn reload(
+        &mut self,
+        path: Option<SettingsFile>,
+        previews: &mut PreviewManager,
+    ) -> Result<(), ReloadError> {
         let load_file = path.unwrap_or_else(|| self.load_file.clone());
 
         let config = match &load_file {
@@ -1764,6 +1842,8 @@ impl ApplicationSettings {
         let dirs = profile.dirs.take().unwrap_or_default().merge(dirs);
         let dirs = dirs.values();
 
+        let image_preview_changed = tunables.image_preview != self.tunables.image_preview;
+
         // update values
         self.tunables = tunables;
         self.profile = profile;
@@ -1772,16 +1852,21 @@ impl ApplicationSettings {
 
         // apply changes that need more setup
 
-        self.update(TunablesUpdate::LogLevel(LogLevelUpdate::parse(
-            self.tunables.log_level.to_owned(),
-        )?));
+        self.update(
+            TunablesUpdate::LogLevel(LogLevelUpdate::parse(self.tunables.log_level.to_owned())?),
+            previews,
+        );
+
+        if image_preview_changed {
+            self.update(TunablesUpdate::ImagePreview(ImagePreviewUpdate::Reload), previews);
+        }
 
         Ok(())
     }
 
     /// Update [`self.tunables`](`Self::tunables`) with `new`.
     /// This will make sure that the updated value is applied.
-    pub fn update(&mut self, update: TunablesUpdate) {
+    pub fn update(&mut self, update: TunablesUpdate, previews: &mut PreviewManager) {
         match update {
             TunablesUpdate::LogLevel(update) => {
                 if let Some(handle) = &mut self.log_level_handle {
@@ -1790,6 +1875,27 @@ impl ApplicationSettings {
                         .expect("cannot update appending tracing logger");
                     self.tunables.log_level = update.directives;
                 }
+            },
+            TunablesUpdate::ImagePreview(image_preview_update) => {
+                let image_preview = &mut self.tunables.image_preview;
+                match image_preview_update {
+                    ImagePreviewUpdate::Width(width) => image_preview.size.width = width,
+                    ImagePreviewUpdate::Height(height) => image_preview.size.height = height,
+                    ImagePreviewUpdate::ProtocolType(protocol_type) => {
+                        image_preview.protocol.r#type = Some(protocol_type.into())
+                    },
+                    ImagePreviewUpdate::Reload => (),
+                }
+
+                if matches!(
+                    image_preview_update,
+                    ImagePreviewUpdate::Reload | ImagePreviewUpdate::ProtocolType(_)
+                ) && let Some(protocol_type) = image_preview.protocol.r#type
+                {
+                    previews.update_protocol_type(protocol_type);
+                }
+
+                previews.mark_all_queued(image_preview.size);
             },
             TunablesUpdate::Sort(sort_update) => {
                 match sort_update {

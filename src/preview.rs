@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use matrix_sdk::{
     Media,
@@ -6,7 +6,12 @@ use matrix_sdk::{
     ruma::events::room::MediaSource,
 };
 use ratatui::layout::{Rect, Size};
-use ratatui_image::{FilterType, Resize, picker::Picker, protocol::Protocol};
+use ratatui_image::{
+    FilterType,
+    Resize,
+    picker::{Picker, ProtocolType},
+    protocol::Protocol,
+};
 use tokio::sync::Semaphore;
 
 use crate::{
@@ -61,6 +66,24 @@ impl PreviewManager {
 
     pub fn get(&self, source: &MediaSource, kind: PreviewKind) -> Option<&ImageStatus> {
         self.previews.get(&(source.unique_key(), kind))
+    }
+
+    /// Mark all registered previews as queued.
+    ///
+    /// Useful when changing preview settings.
+    pub fn mark_all_queued(&mut self, size: ImagePreviewSize) {
+        for status in self.previews.values_mut() {
+            *status = ImageStatus::Queued(size);
+        }
+    }
+
+    /// Change the [ProtocolType`] used to render the previews.
+    ///
+    /// This change only applies to newly rendered previews.
+    pub fn update_protocol_type(&mut self, protocol_type: ProtocolType) {
+        let mut picker = self.picker.deref().clone();
+        picker.set_protocol_type(protocol_type);
+        self.picker = picker.into();
     }
 
     fn insert(&mut self, key: String, kind: PreviewKind, status: ImageStatus) {
