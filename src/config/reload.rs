@@ -433,6 +433,8 @@ pub enum TunablesUpdate {
     #[strum_discriminants(strum(props(is_bool = true)))]
     TypingNoticeDisplay(bool),
     #[strum_discriminants(strum(props(is_bool = true)))]
+    MessageTimeDisplay(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     MessageUserColor(bool),
     #[strum_discriminants(strum(props(is_bool = true)))]
     MessageFormattedDisplay(bool),
@@ -628,6 +630,8 @@ impl TunablesUpdate {
             "notypingnoticesend" => Self::TypingNoticeSend(false),
             "typingnoticedisplay" => Self::TypingNoticeDisplay(true),
             "notypingnoticedisplay" => Self::TypingNoticeDisplay(false),
+            "messagetimedisplay" => Self::MessageTimeDisplay(true),
+            "nomessagetimedisplay" => Self::MessageTimeDisplay(false),
             "messageusercolor" => Self::MessageUserColor(true),
             "nomessageusercolor" => Self::MessageUserColor(false),
             "ignorecase" => Self::Ignorecase(true),
@@ -879,6 +883,9 @@ impl ApplicationSettings {
             },
             TunablesUpdate::InputPrompt(prompt) => {
                 self.tunables.input_prompt = prompt;
+            },
+            TunablesUpdate::MessageTimeDisplay(message_time_display) => {
+                self.tunables.message_time_display = message_time_display;
             },
         }
     }
