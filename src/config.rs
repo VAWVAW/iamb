@@ -1316,6 +1316,8 @@ pub enum TunablesUpdate {
     #[strum_discriminants(strum(props(is_bool = true)))]
     TypingNoticeDisplay(bool),
     #[strum_discriminants(strum(props(is_bool = true)))]
+    MessageTimeDisplay(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     MessageUserColor(bool),
     // These may need to be adapted
 
@@ -1488,6 +1490,8 @@ impl TunablesUpdate {
             "notypingnoticesend" => Self::TypingNoticeSend(false),
             "typingnoticedisplay" => Self::TypingNoticeDisplay(true),
             "notypingnoticedisplay" => Self::TypingNoticeDisplay(false),
+            "messagetimedisplay" => Self::MessageTimeDisplay(true),
+            "nomessagetimedisplay" => Self::MessageTimeDisplay(false),
             "messageusercolor" => Self::MessageUserColor(true),
             "nomessageusercolor" => Self::MessageUserColor(false),
 
@@ -2437,6 +2441,9 @@ impl ApplicationSettings {
             },
             TunablesUpdate::Ignorecase(ignorecase) => {
                 self.tunables.ignorecase = ignorecase;
+            },
+            TunablesUpdate::MessageTimeDisplay(message_time_display) => {
+                self.tunables.message_time_display = message_time_display;
             },
         }
     }
