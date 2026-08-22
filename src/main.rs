@@ -211,6 +211,7 @@ fn resolve_mxid(
     join_or_create: bool,
 ) -> IambResult<Result<IambId, String>> {
     let room_name;
+    let mut event_id = None;
     let room_id = match id {
         MatrixId::Room(id) => {
             room_name = id.to_string();
@@ -231,8 +232,8 @@ fn resolve_mxid(
             room_name = id.to_string();
             id
         },
-        MatrixId::Event(owned_room_or_alias_id, _event_id) => {
-            // ignore event id for now
+        MatrixId::Event(owned_room_or_alias_id, ev_id) => {
+            event_id = Some(ev_id);
             room_name = owned_room_or_alias_id.to_string();
             let room_or_alias_id: &matrix_sdk::ruma::RoomOrAliasId = &owned_room_or_alias_id;
             if let Ok(alias_id) = <&matrix_sdk::ruma::RoomAliasId>::try_from(room_or_alias_id) {
@@ -261,7 +262,11 @@ fn resolve_mxid(
         }
     }
 
-    Ok(Ok(IambId::Room(room_id, RoomView::Main)))
+    if let Some(event_id) = event_id {
+        Ok(Ok(IambId::Room(room_id, RoomView::Message(message::MessageId::Origin(event_id)))))
+    } else {
+        Ok(Ok(IambId::Room(room_id, RoomView::Main)))
+    }
 }
 
 fn setup_screen(
