@@ -1298,6 +1298,8 @@ pub enum TunablesUpdate {
 
     // bool options
     #[strum_discriminants(strum(props(is_bool = true)))]
+    Ignorecase(bool),
+    #[strum_discriminants(strum(props(is_bool = true)))]
     MessageShortcodeDisplay(bool),
     #[strum_discriminants(strum(props(is_bool = true)))]
     NormalAfterSend(bool),
@@ -1468,6 +1470,8 @@ impl TunablesUpdate {
             },
 
             // bool options
+            "ignorecase" => Self::Ignorecase(true),
+            "noignorecase" => Self::Ignorecase(false),
             "messageshortcodedisplay" => Self::MessageShortcodeDisplay(true),
             "nomessageshortcodedisplay" => Self::MessageShortcodeDisplay(false),
             "normalaftersend" => Self::NormalAfterSend(true),
@@ -2358,6 +2362,9 @@ impl ApplicationSettings {
             },
             TunablesUpdate::MessageUserColor(message_user_color) => {
                 self.tunables.message_user_color = message_user_color
+            },
+            TunablesUpdate::Ignorecase(ignorecase) => {
+                self.tunables.ignorecase = ignorecase;
             },
         }
     }
