@@ -62,10 +62,12 @@ mod message;
 mod notifications;
 mod prelude;
 mod preview;
-mod util;
 mod verifications;
 mod windows;
 mod worker;
+
+#[macro_use]
+mod util;
 
 #[cfg(test)]
 mod tests;
