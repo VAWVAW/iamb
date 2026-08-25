@@ -67,10 +67,12 @@ mod notifications;
 mod prelude;
 mod preview;
 mod sled_export;
-mod util;
 mod verifications;
 mod windows;
 mod worker;
+
+#[macro_use]
+mod util;
 
 #[cfg(test)]
 mod tests;
