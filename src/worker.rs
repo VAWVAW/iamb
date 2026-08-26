@@ -400,12 +400,21 @@ fn members_insert(
     store: &mut ProgramStore,
 ) {
     if let Ok(members) = res {
-        let ChatStore { rooms, .. } = &mut store.application;
+        let ChatStore { rooms, previews, settings, worker, .. } = &mut store.application;
         let info = rooms.get_or_default(room_id);
 
         for member in members {
             let user_id = member.user_id().to_owned();
             let name = member.display_name().map(|s| s.to_owned());
+
+            info.update_user_avatar(
+                &user_id,
+                member.avatar_url().map(ToOwned::to_owned),
+                settings,
+                previews,
+                worker,
+            );
+
             info.display_names.set(user_id, name);
         }
     }
@@ -1281,7 +1290,18 @@ impl ClientWorker {
                     let user_id = ev.state_key;
 
                     let mut locked = store.lock().await;
-                    let info = locked.application.get_room_info(room_id.to_owned());
+                    let ChatStore { rooms, previews, settings, worker, .. } =
+                        &mut locked.application;
+                    let info = rooms.get_or_default(room_id.to_owned());
+
+                    info.update_user_avatar(
+                        &user_id,
+                        ev.content.avatar_url,
+                        settings,
+                        previews,
+                        worker,
+                    );
+
                     info.display_names.set(user_id, ev.content.displayname);
                 }
             },

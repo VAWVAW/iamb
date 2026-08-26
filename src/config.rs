@@ -698,6 +698,7 @@ pub struct ImagePreviewValues {
     pub lazy_load: bool,
     pub size: Size,
     pub protocol: ImagePreviewProtocolValues,
+    pub user_avatars: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -706,6 +707,7 @@ pub struct ImagePreview {
     pub lazy_load: Option<bool>,
     pub size: Option<Size>,
     pub protocol: Option<ImagePreviewProtocolValues>,
+    pub user_avatars: Option<bool>,
 }
 
 impl ImagePreview {
@@ -715,6 +717,7 @@ impl ImagePreview {
             lazy_load: self.lazy_load.unwrap_or(true),
             size: self.size.unwrap_or(Size { width: 66, height: 10 }),
             protocol: self.protocol.unwrap_or_default(),
+            user_avatars: self.user_avatars.unwrap_or(true),
         }
     }
 }
@@ -830,6 +833,7 @@ pub struct TunableValues {
     pub terminal: TerminalValues,
     pub image_preview: ImagePreviewValues,
     pub user_gutter_width: usize,
+    pub sender_extra_line: bool,
     pub external_edit_file_suffix: String,
     pub tabstop: usize,
     pub input_prompt: Option<String>,
@@ -882,6 +886,7 @@ pub struct Tunables {
     pub notifications: Option<Notifications>,
     pub image_preview: Option<ImagePreview>,
     pub user_gutter_width: Option<usize>,
+    pub sender_extra_line: Option<bool>,
     pub external_edit_file_suffix: Option<String>,
     pub tabstop: Option<usize>,
     pub input_prompt: Option<String>,
@@ -931,6 +936,7 @@ impl Tunables {
             notifications: self.notifications.or(other.notifications),
             image_preview: self.image_preview.or(other.image_preview),
             user_gutter_width: self.user_gutter_width.or(other.user_gutter_width),
+            sender_extra_line: self.sender_extra_line.or(other.sender_extra_line),
             external_edit_file_suffix: self
                 .external_edit_file_suffix
                 .or(other.external_edit_file_suffix),
@@ -944,6 +950,17 @@ impl Tunables {
     }
 
     fn values(self) -> TunableValues {
+        let image_preview = self.image_preview.unwrap_or_default().values();
+
+        let user_gutter_width = self
+            .user_gutter_width
+            .unwrap_or(30)
+            .max(image_preview.user_avatars as usize * 4);
+
+        let sender_extra_line = image_preview.user_avatars ||
+            user_gutter_width <= 2 ||
+            self.sender_extra_line.unwrap_or_default();
+
         TunableValues {
             encryption: self.encryption.values(),
             proxy: self.proxy.unwrap_or_default().values(),
@@ -972,8 +989,9 @@ impl Tunables {
             open_command: self.open_command,
             mouse: self.mouse.unwrap_or_default(),
             notifications: self.notifications.unwrap_or_default(),
-            image_preview: self.image_preview.unwrap_or_default().values(),
-            user_gutter_width: self.user_gutter_width.unwrap_or(30),
+            image_preview,
+            user_gutter_width,
+            sender_extra_line,
             external_edit_file_suffix: self
                 .external_edit_file_suffix
                 .unwrap_or_else(|| ".md".to_string()),

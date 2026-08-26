@@ -1170,6 +1170,9 @@ pub struct RoomInfo {
     /// The display names for users in this room.
     pub display_names: DisplayNameStore,
 
+    /// The avatars for users in this room.
+    pub avatars: HashMap<OwnedUserId, MediaSource>,
+
     /// The last time the room was rendered, used to detect if it is currently open.
     pub draw_last: Option<Instant>,
 }
@@ -1194,6 +1197,7 @@ impl Default for RoomInfo {
             display_names: Default::default(),
             draw_last: Default::default(),
             unloaded_edits: Default::default(),
+            avatars: Default::default(),
         }
     }
 }
@@ -1278,6 +1282,36 @@ impl RoomInfo {
             .map(HashMap::iter)
             .unwrap_or_default()
             .filter_map(|(_, (_, _, source))| source.as_ref())
+    }
+
+    pub fn update_user_avatar(
+        &mut self,
+        user_id: &UserId,
+        url: Option<OwnedMxcUri>,
+        settings: &ApplicationSettings,
+        previews: &mut PreviewManager,
+        worker: &Requester,
+    ) {
+        let Some(url) = url else {
+            self.avatars.remove(user_id);
+            return;
+        };
+
+        let source = MediaSource::Plain(url);
+
+        previews.register_preview(
+            settings,
+            source.clone(),
+            PreviewKind::Avatar,
+            ImagePreviewSize { width: 4, height: 2 },
+            worker,
+        );
+
+        if let Some(avatar) = self.avatars.get_mut(user_id) {
+            *avatar = source;
+        } else {
+            self.avatars.insert(user_id.to_owned(), source);
+        }
     }
 
     /// Map an event identifier to its [MessageKey].

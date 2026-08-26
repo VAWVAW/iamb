@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use matrix_sdk::{
     Media,
-    media::{MediaFormat, MediaRequestParameters, UniqueKey},
+    media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings, UniqueKey},
     ruma::events::room::MediaSource,
 };
 use ratatui::layout::Size;
@@ -27,6 +27,7 @@ pub enum ImageStatus {
 pub enum PreviewKind {
     Message,
     Reaction,
+    Avatar,
 }
 
 impl PreviewKind {
@@ -152,9 +153,21 @@ pub async fn load_image(
         permits: Arc<Semaphore>,
         size: Size,
         filter: FilterType,
+        kind: PreviewKind,
     ) -> Result<ImageStatus, IambError> {
+        let format = if let PreviewKind::Message = kind {
+            // use full size for images to share the cache with `:download`/`:open`
+            MediaFormat::File
+        } else {
+            let (width, height) = picker.font_size();
+            MediaFormat::Thumbnail(MediaThumbnailSettings::new(
+                (size.width as u16 * width).into(),
+                (size.height as u16 * height).into(),
+            ))
+        };
+
         let reader = media
-            .get_media_content(&MediaRequestParameters { source, format: MediaFormat::File }, true)
+            .get_media_content(&MediaRequestParameters { source, format }, true)
             .await
             .map(std::io::Cursor::new)
             .map(image::ImageReader::new)
@@ -191,7 +204,7 @@ pub async fn load_image(
         .filter
         .unwrap_or(FilterType::Triangle);
 
-    let status = match load_image_inner(media, source, picker, permits, size, filter).await {
+    let status = match load_image_inner(media, source, picker, permits, size, filter, kind).await {
         Ok(status) => status,
         Err(err) => ImageStatus::Error(format!("{err:?}")),
     };
