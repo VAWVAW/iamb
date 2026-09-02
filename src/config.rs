@@ -17,6 +17,7 @@ use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::media::MediaRetentionPolicy;
 use matrix_sdk::reqwest::header::{HeaderMap, HeaderValue};
 use matrix_sdk::ruma::{OwnedDeviceId, OwnedRoomAliasId, OwnedRoomId, OwnedUserId, UserId};
+use ratatui::crossterm::cursor::SetCursorStyle;
 use ratatui::style::{Color, Modifier as StyleModifier, Style};
 use ratatui::text::Span;
 use ratatui_image::FilterType;
@@ -390,8 +391,9 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "lowercase")]
 #[repr(u8)]
 pub enum ReadReceiptTrigger {
     /// Update read receipts for a room when a window for it is focused, and it is scrolled to the
@@ -497,8 +499,9 @@ pub enum UserDisplayStyle {
     DisplayName,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum SplitDirection {
     #[default]
     Horizontal,
@@ -1004,26 +1007,39 @@ impl From<IambProtocolType> for ProtocolType {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, EnumDiscriminants)]
 #[strum_discriminants(derive(IntoStaticStr, VariantArray))]
 pub enum ImagePreviewUpdate {
+    Enabled(bool),
     Width(usize),
     Height(usize),
     ProtocolType(IambProtocolType),
+    ProtocolFilter(FilterType),
 
     /// Reload the image previews without chaning a setting (used by `:reload`)
     Reload,
 }
 
 impl ImagePreviewUpdate {
-    fn new(option: &str, value: &str) -> Result<Self, TunablesUpdateError> {
+    fn new(option: &str, value: Option<&str>) -> Result<Self, TunablesUpdateError> {
         let res = match option {
             "size.width" => {
-                let width = usize::from_str(value)?;
-                Self::Width(width)
+                if let Some(value) = value {
+                    let width = usize::from_str(value)?;
+                    Self::Width(width)
+                } else {
+                    return Err(TunablesUpdateError::NoArguments);
+                }
             },
             "size.height" => {
-                let height = usize::from_str(value)?;
-                Self::Height(height)
+                if let Some(value) = value {
+                    let height = usize::from_str(value)?;
+                    Self::Height(height)
+                } else {
+                    return Err(TunablesUpdateError::NoArguments);
+                }
             },
             "protocol.type" => {
+                let Some(value) = value else {
+                    return Err(TunablesUpdateError::NoArguments);
+                };
                 let protocol_type = match value {
                     "sixel" => IambProtocolType::Sixel,
                     "kitty" => IambProtocolType::Kitty,
@@ -1034,6 +1050,25 @@ impl ImagePreviewUpdate {
 
                 Self::ProtocolType(protocol_type)
             },
+
+            "protocol.filter" => {
+                let Some(value) = value else {
+                    return Err(TunablesUpdateError::NoArguments);
+                };
+                let filter = match value {
+                    "Nearest" => FilterType::Nearest,
+                    "Triangle" => FilterType::Triangle,
+                    "CatmullRom" => FilterType::CatmullRom,
+                    "Gaussian" => FilterType::Gaussian,
+                    "Lanczos3" => FilterType::Lanczos3,
+                    _ => return Err(TunablesUpdateError::InvalidArgument),
+                };
+
+                Self::ProtocolFilter(filter)
+            },
+
+            "enabled" => Self::Enabled(true),
+            "noenabled" => Self::Enabled(false),
 
             _ => return Err(TunablesUpdateError::UnknownOption),
         };
@@ -1066,6 +1101,30 @@ impl EncryptionUpdate {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
+#[strum_discriminants(derive(IntoStaticStr, VariantArray))]
+pub enum TerminalUpdate {
+    CursorShape(CursorShape),
+}
+
+impl TerminalUpdate {
+    fn new(option: &str, value: Option<&str>) -> Result<Self, TunablesUpdateError> {
+        let res = match option {
+            "cursorshape" => {
+                if let Some(value) = value {
+                    Self::CursorShape(CursorShape::from_str(value)?)
+                } else {
+                    return Err(TunablesUpdateError::NoArguments);
+                }
+            },
+
+            _ => return Err(TunablesUpdateError::UnknownOption),
+        };
+
+        Ok(res)
+    }
+}
+
 /// A update for the [`TunableValues`] after invoking the `:set` command.
 #[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(IntoStaticStr, EnumProperty, VariantArray))]
@@ -1076,9 +1135,14 @@ pub enum TunablesUpdate {
     Users(OwnedUserId, UserDisplayUpdate),
     ImagePreview(ImagePreviewUpdate),
     Encryption(EncryptionUpdate),
+    Terminal(TerminalUpdate),
 
     // value options
+    DefaultMarkup(MarkupFormat),
+    DefaultSplit(SplitDirection),
     LogLevel(Box<LogLevelUpdate>),
+    MembersSplit(Option<SplitDirection>),
+    ReadReceiptTrigger(ReadReceiptTrigger),
     UsernameDisplay(UserDisplayStyle),
     OpenCommand(Vec<String>),
     ExternalEditFileSuffix(String),
@@ -1147,10 +1211,6 @@ impl TunablesUpdate {
         }
         // image previews
         if let Some(image_preview_option) = option.strip_prefix("imagepreview.") {
-            let Some(value) = value else {
-                return Err(TunablesUpdateError::NoArguments);
-            };
-
             return Ok(Self::ImagePreview(ImagePreviewUpdate::new(image_preview_option, value)?));
         }
         // encryption indicator
@@ -1161,12 +1221,48 @@ impl TunablesUpdate {
 
             return Ok(Self::Encryption(EncryptionUpdate::new(encryption_option, value)?));
         }
+        // terminal
+        if let Some(terminal_option) = option.strip_prefix("terminal.") {
+            return Ok(Self::Terminal(TerminalUpdate::new(terminal_option, value)?));
+        }
 
         let res = match option.as_str() {
             // value options
             "loglevel" => {
                 if let Some(value) = value {
                     Self::LogLevel(LogLevelUpdate::parse(value.to_owned())?)
+                } else {
+                    return Err(TunablesUpdateError::NoArguments);
+                }
+            },
+            "defaultmarkup" => {
+                if let Some(value) = value {
+                    Self::DefaultMarkup(MarkupFormat::from_str(value)?)
+                } else {
+                    return Err(TunablesUpdateError::NoArguments);
+                }
+            },
+            "defaultsplit" => {
+                if let Some(value) = value {
+                    Self::DefaultSplit(SplitDirection::from_str(value)?)
+                } else {
+                    return Err(TunablesUpdateError::NoArguments);
+                }
+            },
+            "memberssplit" => {
+                if let Some(value) = value {
+                    if value.is_empty() {
+                        Self::MembersSplit(None)
+                    } else {
+                        Self::MembersSplit(Some(SplitDirection::from_str(value)?))
+                    }
+                } else {
+                    return Err(TunablesUpdateError::NoArguments);
+                }
+            },
+            "readreceipttrigger" => {
+                if let Some(value) = value {
+                    Self::ReadReceiptTrigger(ReadReceiptTrigger::from_str(value)?)
                 } else {
                     return Err(TunablesUpdateError::NoArguments);
                 }
@@ -1456,8 +1552,9 @@ impl Tunables {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 #[repr(u8)]
 pub enum CursorShape {
     #[default]
@@ -1478,8 +1575,9 @@ impl From<CursorShape> for modalkit::crossterm::cursor::SetCursorStyle {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 #[repr(u8)]
 pub enum MarkupFormat {
     Html,
@@ -1918,6 +2016,10 @@ impl ApplicationSettings {
                     ImagePreviewUpdate::ProtocolType(protocol_type) => {
                         image_preview.protocol.r#type = Some(protocol_type.into())
                     },
+                    ImagePreviewUpdate::Enabled(enabled) => image_preview.enabled = enabled,
+                    ImagePreviewUpdate::ProtocolFilter(filter) => {
+                        image_preview.protocol.filter = Some(filter)
+                    },
                     ImagePreviewUpdate::Reload => (),
                 }
 
@@ -1969,11 +2071,29 @@ impl ApplicationSettings {
                     self.tunables.open_command = Some(open_command);
                 }
             },
+            TunablesUpdate::DefaultMarkup(format) => {
+                self.tunables.default_markup = format;
+            },
+            TunablesUpdate::DefaultSplit(direction) => {
+                self.tunables.default_split = direction;
+            },
+            TunablesUpdate::MembersSplit(direction) => {
+                self.tunables.members_split = direction;
+            },
+            TunablesUpdate::ReadReceiptTrigger(trigger) => {
+                self.tunables.read_receipt_trigger = trigger;
+            },
             TunablesUpdate::Encryption(EncryptionUpdate::Indicator(indicator)) => {
                 self.tunables.encryption.indicator = indicator;
             },
             TunablesUpdate::Encryption(EncryptionUpdate::IndicatorLocation(indicator_location)) => {
                 self.tunables.encryption.indicator_location = indicator_location;
+            },
+            TunablesUpdate::Terminal(TerminalUpdate::CursorShape(shape)) => {
+                self.tunables.terminal.cursor_shape = shape;
+
+                let cursor_shape = SetCursorStyle::from(shape);
+                let _ = modalkit::crossterm::execute!(std::io::stdout(), cursor_shape);
             },
             TunablesUpdate::UsernameDisplay(username_display) => {
                 self.tunables.username_display = username_display
