@@ -447,6 +447,9 @@ impl Application {
                 f.set_cursor_position((cx, cy));
             }
         })?;
+        if sstate.hide_term_cursor() {
+            term.hide_cursor()?;
+        }
 
         Ok(())
     }

@@ -250,18 +250,17 @@ impl MessageTimeStamp {
         dt1.date_naive() == dt2.date_naive()
     }
 
-    fn show_date(self, settings: &ApplicationSettings) -> Option<Span<'static>> {
+    fn show_date(self, settings: &ApplicationSettings) -> Span<'static> {
         let time = self.as_datetime().format("%A, %B %d %Y").to_string();
 
         Span::styled(time, settings.tunables.colors.message_date.add_modifier(StyleModifier::BOLD))
-            .into()
     }
 
-    fn show_time(self, settings: &ApplicationSettings) -> Option<Span<'static>> {
+    fn show_time(self, settings: &ApplicationSettings) -> Span<'static> {
         let time = self.as_datetime().format("%T");
         let time = format!("  [{time}]");
 
-        Span::styled(time, settings.tunables.colors.message_time).into()
+        Span::styled(time, settings.tunables.colors.message_time)
     }
 }
 
@@ -1067,6 +1066,12 @@ impl Message {
         return style;
     }
 
+    pub fn show_date(&self, prev: Option<&Message>) -> bool {
+        let Some(prev) = prev else { return true };
+
+        !prev.timestamp.same_day(self.timestamp)
+    }
+
     fn get_render_format<'a>(
         &'a self,
         prev: Option<&Message>,
@@ -1075,10 +1080,7 @@ impl Message {
         settings: &'a ApplicationSettings,
     ) -> MessageFormatter<'a> {
         let orig = width;
-        let date = match &prev {
-            Some(prev) if prev.timestamp.same_day(self.timestamp) => None,
-            _ => self.timestamp.show_date(settings),
-        };
+        let date = self.show_date(prev).then(|| self.timestamp.show_date(settings));
         let user_gutter = settings.tunables.user_gutter_width;
 
         if user_gutter + TIME_GUTTER + READ_GUTTER + MIN_MSG_LEN <= width &&
@@ -1087,7 +1089,7 @@ impl Message {
             let cols = MessageColumns::Four;
             let fill = width - user_gutter - TIME_GUTTER - READ_GUTTER;
             let user = self.show_sender(prev, true, info, settings, width);
-            let time = self.timestamp.show_time(settings);
+            let time = Some(self.timestamp.show_time(settings));
             let read = info
                 .event_receipts
                 .values()
@@ -1111,7 +1113,7 @@ impl Message {
             let cols = MessageColumns::Three;
             let fill = width - user_gutter - TIME_GUTTER;
             let user = self.show_sender(prev, true, info, settings, width);
-            let time = self.timestamp.show_time(settings);
+            let time = Some(self.timestamp.show_time(settings));
             let read = Vec::new();
 
             MessageFormatter {
