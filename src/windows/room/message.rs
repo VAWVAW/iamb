@@ -16,7 +16,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{StatefulWidget, Widget};
-use ratatui_image::{Image, protocol::Protocol};
+use ratatui_image::sliced::{SignedPosition, SlicedImage, SlicedProtocol};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 use url::Url;
@@ -40,7 +40,7 @@ use crate::preview::{ImageStatus, PreviewKind};
 use crate::util::space;
 use crate::windows::room::chat;
 
-type ImagePreview = (Arc<Protocol>, u16);
+type ImagePreview = (Arc<SlicedProtocol>, u16);
 
 fn user_date_line(
     msg: &Message,
@@ -508,7 +508,7 @@ impl<'a> StatefulWidget for MessageWidget<'a> {
         std::mem::drop(locked);
 
         // only store style info
-        let lines: Vec<_> = lines
+        let mut lines: Vec<_> = lines
             .into_iter()
             .map(|(line, preview)| {
                 let styles: Vec<(_, u16)> = line
@@ -529,15 +529,24 @@ impl<'a> StatefulWidget for MessageWidget<'a> {
         state.draw(area, buf, self.focused, self.store);
 
         // set highlighting
-        let mut image_previews = vec![];
+        let mut image_previews: Vec<_> = lines
+            .drain(..state.tbox.viewctx.corner.y)
+            .zip(-(state.tbox.viewctx.corner.y as i16)..)
+            .flat_map(|((_, _, line_previews), y)| {
+                line_previews
+                    .into_iter()
+                    .map(move |(proto, msg_x)| (area.left() + msg_x, area.top() as i16 + y, proto))
+            })
+            .collect();
 
-        let mut draw_lines = lines.into_iter().fuse().skip(state.tbox.viewctx.corner.y);
+        let mut draw_lines = lines.into_iter();
         let draw_area = area.intersection(buf.area);
         for y in draw_area.top()..draw_area.top() + draw_area.height {
             let mut x = draw_area.left();
             if let Some((line_style, styles, line_preview)) = draw_lines.next() {
-                image_previews
-                    .extend(line_preview.into_iter().map(|(proto, msg_x)| (x + msg_x, y, proto)));
+                image_previews.extend(
+                    line_preview.into_iter().map(|(proto, msg_x)| (x + msg_x, y as i16, proto)),
+                );
                 for (style, width) in styles {
                     let remaining_width = draw_area.right().saturating_sub(x);
 
@@ -554,13 +563,22 @@ impl<'a> StatefulWidget for MessageWidget<'a> {
         // Render image previews after all text lines have been drawn, as the render might draw below the current
         // line.
         for (x, y, backend) in image_previews {
-            let image_widget = Image::new(&backend);
-            let mut rect: Rect = backend.size().into();
-            rect.x = x;
-            rect.y = y;
-            // Don't render outside of scrollback area
-            if rect.bottom() <= area.bottom() && rect.right() <= area.right() {
-                image_widget.render(rect, buf);
+            if backend.size().height as i16 + y >= area.y as i16 {
+                let hidden_lines = (area.y as i16 - y).max(0);
+
+                let position = SignedPosition { x: 0, y: -hidden_lines };
+                let image_widget = SlicedImage::new(&backend, position);
+                let mut rect: Rect = backend.size().into();
+                rect.x = x;
+                rect.y = (y + hidden_lines) as u16;
+
+                rect.height -= hidden_lines as u16;
+                // rect.width = rect.width.min(msg_width as u16);
+
+                let rect = rect.intersection(area);
+                if !rect.is_empty() {
+                    image_widget.render(rect, buf);
+                }
             }
         }
     }
