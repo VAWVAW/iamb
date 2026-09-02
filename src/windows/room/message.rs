@@ -487,6 +487,9 @@ impl<'a> StatefulWidget for MessageWidget<'a> {
     type State = MessageState;
 
     fn render(mut self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        state
+            .tbox
+            .set_ignorecase(self.store.application.settings.tunables.ignorecase);
         let lines = state.render(&mut self, area.width as usize);
 
         // update text
