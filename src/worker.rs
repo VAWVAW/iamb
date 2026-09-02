@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use futures::{StreamExt, stream::FuturesUnordered};
 use gethostname::gethostname;
 use matrix_sdk_base::RoomStateFilter;
+use ratatui::layout::Size;
 use ratatui_image::picker::Picker;
 use tokio::sync::Semaphore;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -95,7 +96,7 @@ use modalkit::errors::UIError;
 use modalkit::prelude::{EditInfo, InfoMessage};
 
 use crate::base::{EchoLocation, MessageNeed};
-use crate::config::{ImagePreviewSize, ProxyUrl};
+use crate::config::ProxyUrl;
 use crate::message::{Message, MessageEvent, MessageId, MessageKey};
 use crate::notifications::register_notifications;
 use crate::preview::PreviewKind;
@@ -741,7 +742,7 @@ pub enum WorkerTask {
     TypingNotice(OwnedRoomId),
     Verify(VerifyAction, SasVerification, ClientReply<IambResult<EditInfo>>),
     VerifyRequest(OwnedUserId, ClientReply<IambResult<EditInfo>>),
-    LoadImage(MediaSource, PreviewKind, ImagePreviewSize, Arc<Picker>, Arc<Semaphore>),
+    LoadImage(MediaSource, PreviewKind, Size, Arc<Picker>, Arc<Semaphore>),
 }
 
 impl Debug for WorkerTask {
@@ -1004,7 +1005,7 @@ impl Requester {
         &self,
         source: MediaSource,
         kind: PreviewKind,
-        size: ImagePreviewSize,
+        size: Size,
         picker: Arc<Picker>,
         permits: Arc<Semaphore>,
     ) {
