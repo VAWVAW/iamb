@@ -396,8 +396,8 @@ impl ListItem<IambInfo> for VerifyItem {
     ) -> Text<'_> {
         let mut lines = vec![];
         let bold = Style::default().add_modifier(StyleModifier::BOLD);
-        let selected_bold = selected_style(selected).add_modifier(StyleModifier::BOLD);
-        let selected = selected_style(selected);
+        let selected_bold = selected_style(selected, bold);
+        let selected = selected_style(selected, Style::default());
 
         let mut other_device = None;
         let state = match self.request.state() {
