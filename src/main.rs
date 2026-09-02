@@ -31,7 +31,7 @@ use clap::{CommandFactory, Parser};
 use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::matrix_uri::MatrixId;
 use matrix_sdk::ruma::profile::{ProfileFieldName, ProfileFieldValue};
-use matrix_sdk::ruma::{MatrixToUri, MatrixUri, OwnedUserId};
+use matrix_sdk::ruma::{MatrixToUri, MatrixUri, UserId};
 use matrix_sdk::{OwnedServerName, RoomState};
 use matrix_sdk_crypto::encrypt_room_key_export;
 use modalkit::keybindings::InputBindings;
@@ -90,6 +90,7 @@ mod util;
 
 #[cfg(test)]
 mod tests;
+mod verifications;
 
 use crate::base::SettingsAction;
 use crate::config::SettingsFile;
@@ -735,19 +736,15 @@ impl Application {
                 }
             },
 
-            IambAction::Verify(act, user_dev) => {
-                if let Some(sas) = store.application.verifications.get(&user_dev) {
-                    self.worker.verify(act, sas.clone())?
-                } else {
-                    return Err(IambError::InvalidVerificationId(user_dev).into());
-                }
+            IambAction::Verify(act, flow_id) => {
+                return verifications::iamb_verify(act, flow_id, store).await;
             },
             IambAction::VerifyRequest(user_id) => {
-                if let Ok(user_id) = OwnedUserId::try_from(user_id.as_str()) {
-                    self.worker.verify_request(user_id)?
-                } else {
+                let Ok(user_id) = <&UserId>::try_from(user_id.as_str()) else {
                     return Err(IambError::InvalidUserId(user_id).into());
-                }
+                };
+
+                return verifications::iamb_verify_request(user_id, store).await;
             },
 
             IambAction::Settings(act) => {
