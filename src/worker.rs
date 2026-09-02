@@ -257,9 +257,24 @@ async fn run_plan(client: &Client, store: &AsyncProgramStore, plan: Plan) {
             members_insert(room_id, res, locked.deref_mut());
         },
         Plan::Events(room_id, events) => {
-            let res = events_load(client, &room_id, events).await;
+            let Some(room) = client.get_room(&room_id) else {
+                warn!(room_id = room_id.as_str(), "Room not found in cache");
+                return;
+            };
+
+            let res = events_load(&room, events).await;
             let mut locked = store.lock().await;
-            events_insert(room_id, res, locked.deref_mut());
+            let ChatStore {
+                rooms,
+                worker,
+                settings,
+                previews,
+                need_load,
+                presences,
+                ..
+            } = &mut locked.application;
+            let info = rooms.get_or_default(room_id.clone());
+            insert_msgs_and_receipts(res, info, presences, previews, settings, worker, need_load);
         },
     }
 }
@@ -357,13 +372,6 @@ fn insert_msgs_and_receipts(
     worker: &Requester,
     need_load: &mut RoomNeeds,
 ) {
-    if let Some((msg, _)) = msgs.last() {
-        let key = MessageKey {
-            ts: msg.origin_server_ts().into(),
-            id: msg.event_id().to_owned().into(),
-        };
-        info.fetch_event = Some(key);
-    }
     for (msg, receipts) in msgs {
         let sender = msg.sender().to_owned();
         let _ = presences.get_or_default(sender);
@@ -422,6 +430,13 @@ fn load_insert(
 
     match res {
         Ok((reached_start, msgs)) => {
+            if let Some((msg, _)) = msgs.last() {
+                let key = MessageKey {
+                    ts: msg.origin_server_ts().into(),
+                    id: msg.event_id().to_owned().into(),
+                };
+                info.fetch_event = Some(key);
+            }
             insert_msgs_and_receipts(msgs, info, presences, previews, settings, worker, need_load);
 
             info.reached_timeline_start = reached_start;
@@ -471,22 +486,30 @@ async fn members_load(client: &Client, room_id: &RoomId) -> IambResult<Vec<RoomM
 }
 
 async fn events_load(
-    client: &Client,
-    room_id: &RoomId,
+    room: &MatrixRoom,
     events: Vec<OwnedEventId>,
-) -> IambResult<Vec<TimelineEvent>> {
-    if let Some(room) = client.get_room(room_id) {
-        let res = join_all(
-            events
-                .into_iter()
-                .map(async |event_id| room.load_or_fetch_event(&event_id, None).await),
-        )
-        .await;
+) -> Vec<(AnyTimelineEvent, Vec<OwnedUserId>)> {
+    let results = join_all(
+        events
+            .into_iter()
+            .map(async |event_id| room.load_or_fetch_event(&event_id, None).await),
+    )
+    .await;
 
-        Ok(res.into_iter().filter_map(Result::ok).collect())
-    } else {
-        Err(IambError::UnknownRoom(room_id.to_owned()).into())
-    }
+    let events = results
+        .into_iter()
+        .filter_map(|res| {
+            match res {
+                Ok(ev) => Some(ev),
+                Err(e) => {
+                    tracing::warn!(room_id = room.room_id().as_str(), "failed to load event: {e}");
+                    None
+                },
+            }
+        })
+        .collect();
+
+    get_receipts_for_timeline_events(room, events).await
 }
 
 fn member_active(state: &MembershipState) -> bool {
@@ -508,74 +531,6 @@ fn members_insert(
             let is_active = member_active(member.membership());
 
             info.display_names.set(user_id, name, is_active);
-        }
-    }
-    // else ???
-}
-
-fn events_insert(
-    room_id: OwnedRoomId,
-    res: IambResult<Vec<TimelineEvent>>,
-    locked: &mut ProgramStore,
-) {
-    if let Ok(events) = res {
-        let ChatStore { rooms, worker, settings, previews, need_load, .. } =
-            &mut locked.application;
-        let info = rooms.get_or_default(room_id.clone());
-
-        for event in events {
-            let event = match event.kind {
-                TimelineEventKind::Decrypted(event) => {
-                    match event.event.deserialize() {
-                        Ok(event) => event,
-                        Err(err) => {
-                            warn!(
-                                err = %err,
-                                room_id = room_id.as_str(),
-                                raw_event = ?event,
-                                "Failed to deserialize event"
-                            );
-                            continue;
-                        },
-                    }
-                },
-                TimelineEventKind::UnableToDecrypt { event, utd_info: _ } |
-                TimelineEventKind::PlainText { event } => {
-                    let event = match event.deserialize() {
-                        Ok(event) => event,
-                        Err(err) => {
-                            warn!(
-                                err = %err,
-                                room_id = room_id.as_str(),
-                                raw_event = ?event,
-                                "Failed to deserialize event"
-                            );
-                            continue;
-                        },
-                    };
-                    event.into_full_event(room_id.clone())
-                },
-            };
-            match event {
-                AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomEncrypted(msg)) => {
-                    info.insert_encrypted(msg);
-                },
-                AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomMessage(msg)) => {
-                    info.insert_with_preview(msg, settings, previews, worker, need_load);
-                },
-                AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::Reaction(ev)) => {
-                    info.insert_reaction_with_preview(ev, settings, previews, worker);
-                },
-                AnyTimelineEvent::MessageLike(ev) => {
-                    tracing::debug!("Ignoring unimplemented event type {}", ev.event_type());
-                    continue;
-                },
-                AnyTimelineEvent::State(msg) => {
-                    if settings.tunables.state_event_display {
-                        info.insert_any_state(msg.into());
-                    }
-                },
-            }
         }
     }
     // else ???
@@ -616,6 +571,13 @@ async fn load_initial_messages(client: Client, store: AsyncProgramStore) {
             ..
         } = &mut locked.application;
         let info = rooms.get_or_default(room.room_id().to_owned());
+        if let Some((msg, _)) = msgs.last() {
+            let key = MessageKey {
+                ts: msg.origin_server_ts().into(),
+                id: msg.event_id().to_owned().into(),
+            };
+            info.fetch_event = Some(key);
+        }
         insert_msgs_and_receipts(msgs, info, presences, previews, settings, worker, need_load);
     }
 
@@ -637,17 +599,36 @@ async fn load_initial_messages(client: Client, store: AsyncProgramStore) {
                 let (reached_start, msgs) = match load_older_one(room).await {
                     Ok(v) => v,
                     Err(e) => {
-                        tracing::warn!(room_id = ?room.room_id(), "failed to paginate cached events: {e}");
+                        tracing::warn!(
+                            room_id = room.room_id().as_str(),
+                            "failed to paginate cached events: {e}"
+                        );
                         return;
                     },
                 };
 
                 let mut locked = store.lock().await;
-                let ChatStore { presences, rooms, previews, settings, worker, need_load, .. } =
-                    &mut locked.application;
+                let ChatStore {
+                    presences,
+                    rooms,
+                    previews,
+                    settings,
+                    worker,
+                    need_load,
+                    ..
+                } = &mut locked.application;
                 let info = rooms.get_or_default(room.room_id().to_owned());
                 info.reached_timeline_start = reached_start;
-                insert_msgs_and_receipts(msgs, info, presences, previews, settings, worker, need_load);
+                if let Some((msg, _)) = msgs.last() {
+                    let key = MessageKey {
+                        ts: msg.origin_server_ts().into(),
+                        id: msg.event_id().to_owned().into(),
+                    };
+                    info.fetch_event = Some(key);
+                }
+                insert_msgs_and_receipts(
+                    msgs, info, presences, previews, settings, worker, need_load,
+                );
                 drop(permit);
             }
         })
