@@ -39,6 +39,7 @@ use matrix_sdk::ruma::events::key::verification::ready::{
     OriginalSyncKeyVerificationReadyEvent,
     ToDeviceKeyVerificationReadyEvent,
 };
+use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::presence::PresenceState;
 use matrix_sdk::{
     Client,
@@ -410,6 +411,10 @@ async fn members_load(client: &Client, room_id: &RoomId) -> IambResult<Vec<RoomM
     }
 }
 
+fn member_active(state: &MembershipState) -> bool {
+    matches!(state, MembershipState::Invite | MembershipState::Join)
+}
+
 fn members_insert(
     room_id: OwnedRoomId,
     res: IambResult<Vec<RoomMember>>,
@@ -422,7 +427,9 @@ fn members_insert(
         for member in members {
             let user_id = member.user_id().to_owned();
             let name = member.display_name().map(|s| s.to_owned());
-            info.display_names.set(user_id, name);
+            let is_active = member_active(member.membership());
+
+            info.display_names.set(user_id, name, is_active);
         }
     }
     // else ???
@@ -1378,7 +1385,8 @@ impl ClientWorker {
 
                     let mut locked = store.lock().await;
                     let info = locked.application.get_room_info(room_id.to_owned());
-                    info.display_names.set(user_id, ev.content.displayname);
+                    let is_active = member_active(&ev.content.membership);
+                    info.display_names.set(user_id, ev.content.displayname, is_active);
                 }
             },
         );
