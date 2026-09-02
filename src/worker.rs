@@ -1616,7 +1616,7 @@ impl ClientWorker {
         }
     }
 
-    async fn join_room(
+    pub async fn join_room(
         &mut self,
         name: String,
         via: Vec<OwnedServerName>,
