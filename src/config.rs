@@ -423,8 +423,9 @@ impl ReadReceiptTrigger {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, EnumString)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 #[repr(u8)]
 pub enum EncryptionIndicator {
     /// Always indicate the room's encryption status.
@@ -1041,6 +1042,30 @@ impl ImagePreviewUpdate {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
+#[strum_discriminants(derive(IntoStaticStr, VariantArray))]
+pub enum EncryptionUpdate {
+    Indicator(EncryptionIndicator),
+    IndicatorLocation(EncryptionIndicatorLocation),
+}
+
+impl EncryptionUpdate {
+    fn new(option: &str, value: &str) -> Result<Self, TunablesUpdateError> {
+        let res = match option {
+            "indicator" => Self::Indicator(EncryptionIndicator::from_str(value)?),
+            "indicatorlocation" => {
+                let via =
+                    EncryptionIndicatorLocationVisitor.visit_str::<TunablesUpdateError>(value)?;
+                Self::IndicatorLocation(via)
+            },
+
+            _ => return Err(TunablesUpdateError::UnknownOption),
+        };
+
+        Ok(res)
+    }
+}
+
 /// A update for the [`TunableValues`] after invoking the `:set` command.
 #[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(IntoStaticStr, EnumProperty, VariantArray))]
@@ -1050,6 +1075,7 @@ pub enum TunablesUpdate {
     Notifications(NotificationsUpdate),
     Users(OwnedUserId, UserDisplayUpdate),
     ImagePreview(ImagePreviewUpdate),
+    Encryption(EncryptionUpdate),
 
     // value options
     LogLevel(Box<LogLevelUpdate>),
@@ -1126,6 +1152,14 @@ impl TunablesUpdate {
             };
 
             return Ok(Self::ImagePreview(ImagePreviewUpdate::new(image_preview_option, value)?));
+        }
+        // encryption indicator
+        if let Some(encryption_option) = option.strip_prefix("encryption.") {
+            let Some(value) = value else {
+                return Err(TunablesUpdateError::NoArguments);
+            };
+
+            return Ok(Self::Encryption(EncryptionUpdate::new(encryption_option, value)?));
         }
 
         let res = match option.as_str() {
@@ -1934,6 +1968,12 @@ impl ApplicationSettings {
                 } else {
                     self.tunables.open_command = Some(open_command);
                 }
+            },
+            TunablesUpdate::Encryption(EncryptionUpdate::Indicator(indicator)) => {
+                self.tunables.encryption.indicator = indicator;
+            },
+            TunablesUpdate::Encryption(EncryptionUpdate::IndicatorLocation(indicator_location)) => {
+                self.tunables.encryption.indicator_location = indicator_location;
             },
             TunablesUpdate::UsernameDisplay(username_display) => {
                 self.tunables.username_display = username_display
