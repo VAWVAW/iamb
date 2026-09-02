@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 
 use ratatui::{buffer::Buffer, layout::Rect};
 
-use modalkit_ratatui::{textbox::TextBoxState, TermOffset, TerminalCursor, WindowOps};
+use modalkit_ratatui::{TermOffset, TerminalCursor, WindowOps, textbox::TextBoxState};
 
 use modalkit::editing::completion::CompletionList;
 use modalkit::prelude::*;
@@ -43,6 +43,10 @@ impl DerefMut for WelcomeState {
 impl TerminalCursor for WelcomeState {
     fn get_term_cursor(&self) -> Option<TermOffset> {
         self.tbox.get_term_cursor()
+    }
+
+    fn hide_term_cursor(&self) -> bool {
+        self.tbox.hide_term_cursor()
     }
 }
 
