@@ -1299,13 +1299,7 @@ impl RoomInfo {
 
         let source = MediaSource::Plain(url);
 
-        previews.register_preview(
-            settings,
-            source.clone(),
-            PreviewKind::Avatar,
-            ImagePreviewSize { width: 4, height: 2 },
-            worker,
-        );
+        previews.register_preview(settings, &source, PreviewKind::Avatar, worker);
 
         if let Some(avatar) = self.avatars.get_mut(user_id) {
             *avatar = source;

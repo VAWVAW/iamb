@@ -6,8 +6,8 @@ use matrix_sdk::{
     ruma::events::room::MediaSource,
 };
 use ratatui::layout::Size;
-use ratatui_image::sliced::SlicedProtocol;
 use ratatui_image::{FilterType, Resize, picker::Picker};
+use ratatui_image::{FontSize, sliced::SlicedProtocol};
 use tokio::sync::Semaphore;
 
 use crate::{
@@ -35,6 +35,7 @@ impl PreviewKind {
         match self {
             Self::Message => image_preview.size,
             Self::Reaction => Size { width: 2, height: 1 },
+            Self::Avatar => Size { width: 4, height: 2 },
         }
     }
 }
@@ -159,7 +160,7 @@ pub async fn load_image(
             // use full size for images to share the cache with `:download`/`:open`
             MediaFormat::File
         } else {
-            let (width, height) = picker.font_size();
+            let FontSize { width, height } = picker.font_size();
             MediaFormat::Thumbnail(MediaThumbnailSettings::new(
                 (size.width as u16 * width).into(),
                 (size.height as u16 * height).into(),

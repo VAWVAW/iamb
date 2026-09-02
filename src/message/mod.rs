@@ -1341,11 +1341,7 @@ impl Message {
         }
 
         let show_avatar = gutter_enabled &&
-            settings
-                .tunables
-                .image_preview
-                .as_ref()
-                .is_some_and(|previews| previews.user_avatars) &&
+            settings.tunables.image_preview.user_avatars &&
             match info
                 .avatars
                 .get(&self.sender)
