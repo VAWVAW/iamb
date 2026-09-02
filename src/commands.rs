@@ -1073,7 +1073,7 @@ pub fn add_iamb_commands(cmds: &mut ProgramCommands) {
     });
     cmds.add_command(ProgramCommand {
         name: "members".into(),
-        aliases: vec!["m".into()],
+        aliases: vec!["me".into()],
         f: iamb_members,
     });
     cmds.add_command(ProgramCommand {
@@ -1104,7 +1104,7 @@ pub fn add_iamb_commands(cmds: &mut ProgramCommands) {
     cmds.add_command(ProgramCommand { name: "room".into(), aliases: vec![], f: iamb_room });
     cmds.add_command(ProgramCommand {
         name: "message".into(),
-        aliases: vec![],
+        aliases: vec!["m".into()],
         f: iamb_message,
     });
     cmds.add_command(ProgramCommand {
