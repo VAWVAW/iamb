@@ -968,8 +968,8 @@ fn complete_cmdarg(
 
         // These have no arguments
         "cancel" | "ca" | "chats" | "c" | "dms" | "editor" | "ed" | "edit" | "e" | "forget" |
-        "leave" | "members" | "m" | "mentions" | "replied" | "reply" | "rep" | "rooms" | "ro" |
-        "spaces" | "s" | "welcome" => vec![],
+        "leave" | "members" | "me" | "mentions" | "message" | "m" | "replied" | "reply" |
+        "rep" | "rooms" | "ro" | "spaces" | "s" | "welcome" => vec![],
 
         "abo" | "aboveleft" | "bel" | "belowright" | "hor" | "horizontal" | "lefta" |
         "leftabove" | "rightb" | "rightbelow" | "tab" | "vert" | "vertical" => {
