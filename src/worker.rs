@@ -345,6 +345,13 @@ fn insert_msgs_and_receipts(
     settings: &ApplicationSettings,
     worker: &Requester,
 ) {
+    if let Some((msg, _)) = msgs.last() {
+        let key = MessageKey {
+            ts: msg.origin_server_ts().into(),
+            id: msg.event_id().to_owned().into(),
+        };
+        info.fetch_event = Some(key);
+    }
     for (msg, receipts) in msgs {
         let sender = msg.sender().to_owned();
         let _ = presences.get_or_default(sender);
