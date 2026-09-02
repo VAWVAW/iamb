@@ -979,8 +979,8 @@ fn complete_cmdarg(
 
         // These have no arguments
         "cancel" | "ca" | "chats" | "c" | "dms" | "editor" | "ed" | "edit" | "e" | "forget" |
-        "leave" | "members" | "me" | "mentions" | "replied" | "reply" | "rep" | "rooms" | "r" |
-        "spaces" | "s" | "welcome" => {
+        "leave" | "members" | "me" | "mentions" | "message" | "m" | "replied" | "reply" |
+        "rep" | "rooms" | "r" | "spaces" | "s" | "welcome" => {
             vec![]
         },
 
