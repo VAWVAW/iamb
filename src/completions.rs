@@ -845,6 +845,21 @@ fn complete_iamb_room(args: Vec<String>, store: &ChatStore) -> Vec<String> {
     }
 }
 
+/// Tab completion for `:call`
+#[cfg(feature = "voip")]
+fn complete_iamb_call(args: Vec<String>) -> Vec<String> {
+    if args.len() == 1 {
+        complete_choices(&args[0], &[
+            "join", "hangup", "decline", "mute", "unmute", "devices", "device",
+        ])
+    } else if args.len() == 2 && &args[0] == "device" {
+        complete_choices(&args[1], &["mic", "speaker"])
+    } else {
+        // The device itself is an index or a name, which we cannot complete.
+        vec![]
+    }
+}
+
 /// Tab completion for `:space`
 fn complete_iamb_space(args: Vec<String>, store: &ChatStore) -> Vec<String> {
     if args.len() == 1 {
@@ -951,6 +966,9 @@ fn complete_cmdarg(
         "unreact" | "unr" => vec![],
 
         "unreads" | "u" => complete_iamb_unreads(args),
+
+        #[cfg(feature = "voip")]
+        "call" => complete_iamb_call(args),
 
         // complete file path
         "upload" | "up" | "download" | "d" | "open" | "o" | "reload" => {

@@ -2076,6 +2076,10 @@ type ReloadHandle = tracing_subscriber::reload::Handle<
 #[derive(Clone)]
 pub struct ApplicationSettings {
     pub layout_json: PathBuf,
+
+    /// Where the remembered call audio devices are stored.
+    #[cfg(feature = "voip")]
+    pub voip_json: PathBuf,
     pub session_json: PathBuf,
     pub session_json_old: PathBuf,
     pub sled_dir: PathBuf,
@@ -2217,12 +2221,21 @@ impl ApplicationSettings {
         let mut layout_json = cache_dir.clone();
         layout_json.push("layout.json");
 
+        #[cfg(feature = "voip")]
+        let voip_json = {
+            let mut path = cache_dir.clone();
+            path.push("voip.json");
+            path
+        };
+
         let mut sqlite_cache_dir = cache_dir;
         sqlite_cache_dir.push("sqlite");
 
         let settings = ApplicationSettings {
             sled_dir,
             layout_json,
+            #[cfg(feature = "voip")]
+            voip_json,
             session_json,
             session_json_old,
             sqlite_dir,
@@ -2538,6 +2551,35 @@ impl ApplicationSettings {
         let reader = BufReader::new(file);
         let session = serde_json::from_reader(reader).map_err(IambError::from)?;
         Ok(session)
+    }
+
+    /// Read the remembered call audio devices.
+    /// A missing or unreadable file just means no devices have been chosen yet.
+    #[cfg(feature = "voip")]
+    pub fn read_voip_devices(&self) -> crate::voip::devices::DevicePreferences {
+        let Ok(file) = File::open(self.voip_json.as_path()) else {
+            return Default::default();
+        };
+
+        serde_json::from_reader(BufReader::new(file)).unwrap_or_default()
+    }
+
+    /// Remember the chosen call audio devices for the next run.
+    #[cfg(feature = "voip")]
+    pub fn write_voip_devices(
+        &self,
+        devices: &crate::voip::devices::DevicePreferences,
+    ) -> Result<(), IambError> {
+        if let Some(dir) = self.voip_json.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+
+        let file = File::create(self.voip_json.as_path())?;
+        let writer = BufWriter::new(file);
+
+        serde_json::to_writer(writer, devices).map_err(IambError::from)?;
+
+        Ok(())
     }
 
     pub fn write_session(&self, session: MatrixSession) -> Result<(), IambError> {

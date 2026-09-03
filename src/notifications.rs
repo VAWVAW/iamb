@@ -78,8 +78,14 @@ pub async fn register_notifications(client: &Client, store: &AsyncProgramStore) 
                                     return;
                                 }
 
-                                send_notification(&summary, body.as_deref(), room_id, &mut locked)
-                                    .await;
+                                send_notification(
+                                    &summary,
+                                    body.as_deref(),
+                                    room_id,
+                                    &mut locked,
+                                    false,
+                                )
+                                .await;
                             },
                             Err(err) => {
                                 tracing::error!("Failed to extract notification data: {err}")
@@ -96,16 +102,71 @@ pub async fn register_notifications(client: &Client, store: &AsyncProgramStore) 
         .await;
 }
 
+/// Announce that a call has started in a room the user is not currently looking
+/// at.
+///
+/// Unlike message notifications this deliberately ignores the room's push
+/// notification mode: a muted room mutes its *messages*, and someone calling you
+/// is not a message. It is still gated on the global notification tunable.
+///
+/// Takes the already-locked store because the caller is a sync event handler
+/// that holds it; locking it again here would deadlock.
+#[cfg(feature = "voip")]
+pub async fn notify_call_started(room_name: &str, room_id: OwnedRoomId, store: &mut ProgramStore) {
+    if !store.application.settings.tunables.notifications.enabled {
+        return;
+    }
+
+    if is_focused(store) && is_open(store, &room_id) {
+        return;
+    }
+
+    let summary = format!("📞 Call in {room_name}");
+
+    send_notification(&summary, None, room_id, store, false).await;
+}
+
+/// Announce that someone is calling and waiting for an answer (MSC4075).
+///
+/// Unlike [`notify_call_started`] this fires even when the room is open and
+/// focused: a ring is a request for an answer, and silently dropping it because
+/// the user happens to be looking at the room means the call goes unanswered
+/// while they stare at it.
+///
+/// `ring` marks the notification urgent, which is what stops a compositor from
+/// expiring it after a few seconds - a ring the user missed because they were
+/// away from the keyboard is a ring that did not work.
+#[cfg(feature = "voip")]
+pub async fn notify_incoming_call(
+    room_name: &str,
+    caller: &str,
+    room_id: OwnedRoomId,
+    ring: bool,
+    store: &mut ProgramStore,
+) {
+    if !store.application.settings.tunables.notifications.enabled {
+        return;
+    }
+
+    let summary = format!("📞 {caller} is calling");
+    let body = format!("in {room_name} — :call to answer, :call decline to reject");
+
+    send_notification(&summary, Some(&body), room_id, store, ring).await;
+}
+
 async fn send_notification(
     summary: &str,
     body: Option<&str>,
     room_id: OwnedRoomId,
     store: &mut ProgramStore,
+    urgent: bool,
 ) {
     #[cfg(feature = "desktop")]
     if store.application.settings.tunables.notifications.via.desktop {
-        send_notification_desktop(summary, body, room_id, store).await;
+        send_notification_desktop(summary, body, room_id, store, urgent).await;
     }
+    #[cfg(not(feature = "desktop"))]
+    let _ = urgent;
     #[cfg(not(feature = "desktop"))]
     {
         let _ = (summary, body, IAMB_XDG_NAME);
@@ -127,6 +188,7 @@ async fn send_notification_desktop(
     body: Option<&str>,
     room_id: OwnedRoomId,
     store: &mut ProgramStore,
+    urgent: bool,
 ) {
     let mut desktop_notification = notify_rust::Notification::new();
     desktop_notification
@@ -139,8 +201,16 @@ async fn send_notification_desktop(
         desktop_notification.sound_name(sound_hint);
     }
 
+    // A ring stays up until it is dealt with; ordinary notifications expire on
+    // the compositor's own schedule.
     #[cfg(all(unix, not(target_os = "macos")))]
-    desktop_notification.urgency(notify_rust::Urgency::Normal);
+    desktop_notification.urgency(if urgent {
+        notify_rust::Urgency::Critical
+    } else {
+        notify_rust::Urgency::Normal
+    });
+    #[cfg(any(not(unix), target_os = "macos"))]
+    let _ = urgent;
 
     if store.application.settings.tunables.notifications.show_message &&
         let Some(body) = body
