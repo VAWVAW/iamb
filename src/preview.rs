@@ -23,7 +23,7 @@ use crate::{
 pub enum ImageStatus {
     Queued(Size),
     Downloading(Size),
-    Loaded(Arc<SlicedProtocol>),
+    Loaded(Arc<(SlicedProtocol, Size)>),
     Error(String),
 }
 
@@ -197,8 +197,13 @@ pub async fn load_image(
         let handle = tokio::task::spawn_blocking(move || {
             let image = reader.decode().map_err(IambError::Image)?;
 
-            SlicedProtocol::new_with_resize(&picker, image, size, Resize::Fit(Some(filter)))
-                .map_err(|err| IambError::Preview(err.to_string()))
+            let resize = Resize::Fit(Some(filter));
+            let actual_size = resize.size_for(&image, picker.font_size(), size);
+
+            let protocol = SlicedProtocol::new_with_resize(&picker, image, size, resize)
+                .map_err(|err| IambError::Preview(err.to_string()));
+
+            protocol.map(|proto| (proto, actual_size))
         });
 
         let image = handle.await.map_err(|err| IambError::Preview(err.to_string()))??;

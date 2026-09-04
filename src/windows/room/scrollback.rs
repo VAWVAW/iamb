@@ -1565,12 +1565,12 @@ impl StatefulWidget for Scrollback<'_> {
         // Render image previews after all text lines have been drawn, as the render might draw below the current
         // line.
         for (x, y, backend) in image_previews {
-            if backend.size().height as i16 + y >= area.y as i16 {
+            if backend.1.height as i16 + y >= area.y as i16 {
                 let hidden_lines = (area.y as i16 - y).max(0);
 
                 let position = SignedPosition { x: 0, y: -hidden_lines };
-                let image_widget = SlicedImage::new(&backend, position);
-                let mut rect: Rect = backend.size().into();
+                let image_widget = SlicedImage::new(&backend.0, position);
+                let mut rect: Rect = backend.1.into();
                 rect.x = x;
                 rect.y = (y + hidden_lines) as u16;
 

@@ -83,7 +83,7 @@ pub use self::compose::{text_to_message, text_to_text_message_event_content};
 use self::state::{body_cow_state, html_state};
 pub use html::TreeGenState;
 
-type ProtocolPreview = (Arc<SlicedProtocol>, u16, u16);
+type ProtocolPreview = (Arc<(SlicedProtocol, Size)>, u16, u16);
 
 /// The key used for uniquely identifying messages within a room and its threads.
 ///
@@ -1361,7 +1361,7 @@ impl Message {
         tunables: &'a TunableValues,
         previews: &'a PreviewManager,
         info: &'a RoomInfo,
-    ) -> (Text<'a>, Option<Arc<SlicedProtocol>>) {
+    ) -> (Text<'a>, Option<Arc<(SlicedProtocol, Size)>>) {
         let mut proto = None;
         let placeholder = match self
             .image_preview()
@@ -1376,7 +1376,7 @@ impl Message {
             },
             Some(ImageStatus::Loaded(backend)) => {
                 proto = Some(Arc::clone(backend));
-                placeholder_frame(None, width, &backend.size())
+                placeholder_frame(None, width, &backend.1)
             },
             Some(ImageStatus::Error(err)) => Some(format!("[Image error: {err}]\n")),
         };
