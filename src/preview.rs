@@ -20,7 +20,7 @@ use crate::{
 pub enum ImageStatus {
     Queued(Size),
     Downloading(Size),
-    Loaded(SlicedProtocol),
+    Loaded(Arc<SlicedProtocol>),
     Error(String),
 }
 
@@ -195,7 +195,7 @@ pub async fn load_image(
         let image = handle.await.map_err(|err| IambError::Preview(err.to_string()))??;
         std::mem::drop(permit);
 
-        Ok(ImageStatus::Loaded(image))
+        Ok(ImageStatus::Loaded(Arc::new(image)))
     }
     let key = source.unique_key();
 
