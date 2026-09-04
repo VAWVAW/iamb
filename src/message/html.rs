@@ -47,7 +47,7 @@ use ratatui::{
 
 use crate::{
     base::RoomInfo,
-    config::ApplicationSettings,
+    config::TunableValues,
     message::printer::TextPrinter,
     util::{join_cell_text, space_text},
 };
@@ -172,7 +172,7 @@ impl Table {
         &'a self,
         width: usize,
         style: Style,
-        settings: &'a ApplicationSettings,
+        tunables: &'a TunableValues,
         info: &'a RoomInfo,
     ) -> Text<'a> {
         let mut text = Text::default();
@@ -193,7 +193,7 @@ impl Table {
         if let Some(caption) = &self.caption {
             let subw = width.saturating_sub(6);
             let mut printer =
-                TextPrinter::new(subw, style, settings, info).align(Alignment::Center);
+                TextPrinter::new(subw, style, tunables, info).align(Alignment::Center);
             caption.print(&mut printer, style);
 
             for mut line in printer.finish().lines {
@@ -240,7 +240,7 @@ impl Table {
                                 CellType::Data => style,
                             };
 
-                            cell.to_text(*w, style, settings, info)
+                            cell.to_text(*w, style, tunables, info)
                         } else {
                             space_text(*w, style)
                         };
@@ -310,10 +310,10 @@ impl StyleTreeNode {
         &'a self,
         width: usize,
         style: Style,
-        settings: &'a ApplicationSettings,
+        tunables: &'a TunableValues,
         info: &'a RoomInfo,
     ) -> Text<'a> {
-        let mut printer = TextPrinter::new(width, style, settings, info);
+        let mut printer = TextPrinter::new(width, style, tunables, info);
         self.print(&mut printer, style);
         printer.finish()
     }
@@ -396,7 +396,7 @@ impl StyleTreeNode {
                 }
             },
             StyleTreeNode::Code(child, _) => {
-                let style = style.patch(printer.settings().tunables.colors.codeblock_background);
+                let style = style.patch(printer.tunables().colors.codeblock_background);
 
                 let old_style = printer.replace_base_style(style);
 
@@ -486,7 +486,7 @@ impl StyleTreeNode {
                 }
             },
             StyleTreeNode::Table(table) => {
-                let text = table.to_text(width, style, printer.settings, printer.info);
+                let text = table.to_text(width, style, printer.tunables, printer.info);
                 printer.push_text(text);
             },
             StyleTreeNode::Break => {
@@ -504,7 +504,7 @@ impl StyleTreeNode {
             },
 
             StyleTreeNode::UserId(user_id, _) => {
-                let mut span: Span<'a> = printer.settings().get_user_span(user_id, printer.info);
+                let mut span: Span<'a> = printer.tunables().get_user_span(user_id, printer.info);
                 let style = style.patch(span.style);
                 span.style = style;
 
@@ -514,7 +514,7 @@ impl StyleTreeNode {
                 printer.push_span_nobreak(span);
             },
             StyleTreeNode::DisplayName(display_name, user_id, _) => {
-                let style = printer.settings().get_user_style(user_id);
+                let style = printer.tunables().get_user_style(user_id);
                 printer.push_str(display_name.as_str(), style);
             },
             StyleTreeNode::RoomId(room_id, _, _) => {
@@ -549,10 +549,10 @@ impl StyleTree {
         &'a self,
         width: usize,
         style: Style,
-        settings: &'a ApplicationSettings,
+        tunables: &'a TunableValues,
         info: &'a RoomInfo,
     ) -> Text<'a> {
-        let mut printer = TextPrinter::new(width, style, settings, info);
+        let mut printer = TextPrinter::new(width, style, tunables, info);
 
         for child in self.children.iter() {
             child.print(&mut printer, style);
@@ -929,7 +929,7 @@ pub fn parse_matrix_html(s: &str) -> StyleTree {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::tests::{mock_room, mock_settings};
+    use crate::tests::{mock_room, mock_tunables};
     use crate::util::space_span;
     use pretty_assertions::assert_eq;
     use unicode_width::UnicodeWidthStr;
@@ -937,12 +937,12 @@ pub mod tests {
     #[test]
     fn test_header() {
         let info = mock_room();
-        let settings = mock_settings();
+        let tunables = mock_tunables();
         let bold = Style::default().add_modifier(StyleModifier::BOLD);
 
         let s = "<h1>Header 1</h1>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("#", bold),
             Span::styled(" ", bold),
@@ -954,7 +954,7 @@ pub mod tests {
 
         let s = "<h2>Header 2</h2>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("#", bold),
             Span::styled("#", bold),
@@ -967,7 +967,7 @@ pub mod tests {
 
         let s = "<h3>Header 3</h3>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("#", bold),
             Span::styled("#", bold),
@@ -981,7 +981,7 @@ pub mod tests {
 
         let s = "<h4>Header 4</h4>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("#", bold),
             Span::styled("#", bold),
@@ -996,7 +996,7 @@ pub mod tests {
 
         let s = "<h5>Header 5</h5>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("#", bold),
             Span::styled("#", bold),
@@ -1012,7 +1012,7 @@ pub mod tests {
 
         let s = "<h6>Header 6</h6>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("#", bold),
             Span::styled("#", bold),
@@ -1031,7 +1031,7 @@ pub mod tests {
     #[test]
     fn test_style() {
         let info = mock_room();
-        let settings = mock_settings();
+        let tunables = mock_tunables();
         let def = Style::default();
         let bold = def.add_modifier(StyleModifier::BOLD);
         let italic = def.add_modifier(StyleModifier::ITALIC);
@@ -1041,7 +1041,7 @@ pub mod tests {
 
         let s = "<b>Bold!</b>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("Bold", bold),
             Span::styled("!", bold),
@@ -1050,7 +1050,7 @@ pub mod tests {
 
         let s = "<strong>Bold!</strong>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("Bold", bold),
             Span::styled("!", bold),
@@ -1059,7 +1059,7 @@ pub mod tests {
 
         let s = "<i>Italic!</i>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("Italic", italic),
             Span::styled("!", italic),
@@ -1068,7 +1068,7 @@ pub mod tests {
 
         let s = "<em>Italic!</em>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("Italic", italic),
             Span::styled("!", italic),
@@ -1077,7 +1077,7 @@ pub mod tests {
 
         let s = "<del>Strikethrough!</del>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("Strikethrough", strike),
             Span::styled("!", strike),
@@ -1086,7 +1086,7 @@ pub mod tests {
 
         let s = "<strike>Strikethrough!</strike>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("Strikethrough", strike),
             Span::styled("!", strike),
@@ -1095,7 +1095,7 @@ pub mod tests {
 
         let s = "<u>Underline!</u>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("Underline", underl),
             Span::styled("!", underl),
@@ -1104,7 +1104,7 @@ pub mod tests {
 
         let s = "<font color=\"#ff0000\">Red!</u>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("Red", red),
             Span::styled("!", red),
@@ -1113,7 +1113,7 @@ pub mod tests {
 
         let s = "<font color=\"red\">Red!</u>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(20, Style::default(), &settings, &info);
+        let text = tree.to_text(20, Style::default(), &tunables, &info);
         assert_eq!(text.lines, vec![Line::from(vec![
             Span::styled("Red", red),
             Span::styled("!", red),
@@ -1124,10 +1124,10 @@ pub mod tests {
     #[test]
     fn test_paragraph() {
         let info = mock_room();
-        let settings = mock_settings();
+        let tunables = mock_tunables();
         let s = "<p>Hello world!</p><p>Content</p><p>Goodbye world!</p>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(10, Style::default(), &settings, &info);
+        let text = tree.to_text(10, Style::default(), &tunables, &info);
         assert_eq!(text.lines.len(), 7);
         assert_eq!(
             text.lines[0],
@@ -1153,10 +1153,10 @@ pub mod tests {
     #[test]
     fn test_blockquote() {
         let info = mock_room();
-        let settings = mock_settings();
+        let tunables = mock_tunables();
         let s = "<blockquote>Hello world!</blockquote>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(10, Style::default(), &settings, &info);
+        let text = tree.to_text(10, Style::default(), &tunables, &info);
         let style = Style::new().fg(QUOTE_COLOR);
         assert_eq!(text.lines.len(), 2);
         assert_eq!(
@@ -1186,10 +1186,10 @@ pub mod tests {
     #[test]
     fn test_list_unordered() {
         let info = mock_room();
-        let settings = mock_settings();
+        let tunables = mock_tunables();
         let s = "<ul><li>List Item 1</li><li>List Item 2</li><li>List Item 3</li></ul>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(8, Style::default(), &settings, &info);
+        let text = tree.to_text(8, Style::default(), &tunables, &info);
         assert_eq!(text.lines.len(), 6);
         assert_eq!(
             text.lines[0],
@@ -1250,10 +1250,10 @@ pub mod tests {
     #[test]
     fn test_list_ordered() {
         let info = mock_room();
-        let settings = mock_settings();
+        let tunables = mock_tunables();
         let s = "<ol><li>List Item 1</li><li>List Item 2</li><li>List Item 3</li></ol>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(9, Style::default(), &settings, &info);
+        let text = tree.to_text(9, Style::default(), &tunables, &info);
         assert_eq!(text.lines.len(), 6);
         assert_eq!(
             text.lines[0],
@@ -1314,7 +1314,7 @@ pub mod tests {
     #[test]
     fn test_table() {
         let info = mock_room();
-        let settings = mock_settings();
+        let tunables = mock_tunables();
         let s = "<table>\
                  <thead>\
                  <tr><th>Column 1</th><th>Column 2</th><th>Column 3</th></tr>
@@ -1325,7 +1325,7 @@ pub mod tests {
                  <tr><td>a</td><td>b</td><td>c</td></tr>\
                  </tbody></table>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(15, Style::default(), &settings, &info);
+        let text = tree.to_text(15, Style::default(), &tunables, &info);
         let bold = Style::default().add_modifier(StyleModifier::BOLD);
         assert_eq!(text.lines.len(), 11);
 
@@ -1416,11 +1416,11 @@ pub mod tests {
     #[test]
     fn test_matrix_reply_stripped() {
         let info = mock_room();
-        let settings = mock_settings();
+        let tunables = mock_tunables();
         let s = "<mx-reply>This was replied to</mx-reply>This is the reply";
 
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(10, Style::default(), &settings, &info);
+        let text = tree.to_text(10, Style::default(), &tunables, &info);
         assert_eq!(text.lines.len(), 2);
         assert_eq!(
             text.lines[0],
@@ -1446,10 +1446,10 @@ pub mod tests {
     #[test]
     fn test_self_closing() {
         let info = mock_room();
-        let settings = mock_settings();
+        let tunables = mock_tunables();
         let s = "Hello<br>World<br>Goodbye";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(7, Style::default(), &settings, &info);
+        let text = tree.to_text(7, Style::default(), &tunables, &info);
         assert_eq!(text.lines.len(), 3);
         assert_eq!(text.lines[0], Line::from(vec![Span::raw("Hello"), Span::raw("  "),]));
         assert_eq!(text.lines[1], Line::from(vec![Span::raw("World"), Span::raw("  "),]));
@@ -1459,10 +1459,10 @@ pub mod tests {
     #[test]
     fn test_embedded_newline() {
         let info = mock_room();
-        let settings = mock_settings();
+        let tunables = mock_tunables();
         let s = "<p>Hello\nWorld</p>";
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(15, Style::default(), &settings, &info);
+        let text = tree.to_text(15, Style::default(), &tunables, &info);
         assert_eq!(text.lines.len(), 1);
         assert_eq!(
             text.lines[0],
@@ -1478,8 +1478,8 @@ pub mod tests {
     #[test]
     fn test_pre_tag() {
         let info = mock_room();
-        let settings = mock_settings();
-        let code_style = settings.tunables.colors.codeblock_background;
+        let tunables = mock_tunables();
+        let code_style = tunables.colors.codeblock_background;
         let s = concat!(
             "<pre><code class=\"language-rust\">",
             "fn hello() -&gt; usize {\n",
@@ -1489,7 +1489,7 @@ pub mod tests {
             "</code></pre>\n"
         );
         let tree = parse_matrix_html(s);
-        let text = tree.to_text(25, Style::default(), &settings, &info);
+        let text = tree.to_text(25, Style::default(), &tunables, &info);
         assert_eq!(text.lines.len(), 6);
         assert_eq!(
             text.lines[0],
@@ -1568,10 +1568,10 @@ pub mod tests {
     #[test]
     fn test_emoji_shortcodes() {
         let info = mock_room();
-        let mut enabled = mock_settings();
-        enabled.tunables.message_shortcode_display = true;
-        let mut disabled = mock_settings();
-        disabled.tunables.message_shortcode_display = false;
+        let mut enabled = mock_tunables();
+        enabled.message_shortcode_display = true;
+        let mut disabled = mock_tunables();
+        disabled.message_shortcode_display = false;
 
         for shortcode in ["exploding_head", "polar_bear", "canada"] {
             let emoji = emojis::get_by_shortcode(shortcode).unwrap().as_str();

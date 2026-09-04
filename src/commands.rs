@@ -452,6 +452,16 @@ fn iamb_mentions(desc: CommandDescription, ctx: &mut ProgContext) -> ProgResult 
 
     return Ok(step);
 }
+fn iamb_message(desc: CommandDescription, ctx: &mut ProgContext) -> ProgResult {
+    if !desc.arg.text.is_empty() {
+        return Result::Err(CommandError::InvalidArgument);
+    }
+
+    let open = IambAction::Room(RoomAction::Message(ctx.clone().into()));
+    let step = CommandStep::Continue(open.into(), ctx.context.clone());
+
+    return Ok(step);
+}
 
 fn iamb_self(desc: CommandDescription, ctx: &mut ProgContext) -> ProgResult {
     let mut iter = desc.arg.strings()?.into_iter();
@@ -1092,6 +1102,11 @@ pub fn add_iamb_commands(cmds: &mut ProgramCommands) {
         f: iamb_rooms,
     });
     cmds.add_command(ProgramCommand { name: "room".into(), aliases: vec![], f: iamb_room });
+    cmds.add_command(ProgramCommand {
+        name: "message".into(),
+        aliases: vec![],
+        f: iamb_message,
+    });
     cmds.add_command(ProgramCommand {
         name: "space".into(),
         aliases: vec![],
