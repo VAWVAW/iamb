@@ -18,6 +18,7 @@ use matrix_sdk::media::MediaRetentionPolicy;
 use matrix_sdk::reqwest::header::{HeaderMap, HeaderValue};
 use matrix_sdk::ruma::{OwnedDeviceId, OwnedRoomAliasId, OwnedRoomId, OwnedUserId, UserId};
 use ratatui::crossterm::cursor::SetCursorStyle;
+use ratatui::layout::Size;
 use ratatui::style::{Color, Modifier as StyleModifier, Style};
 use ratatui::text::Span;
 use ratatui_image::FilterType;
@@ -697,7 +698,7 @@ pub struct Notifications {
 pub struct ImagePreviewValues {
     pub enabled: bool,
     pub lazy_load: bool,
-    pub size: ImagePreviewSize,
+    pub size: Size,
     pub protocol: ImagePreviewProtocolValues,
 }
 
@@ -705,7 +706,7 @@ pub struct ImagePreviewValues {
 pub struct ImagePreview {
     pub enabled: Option<bool>,
     pub lazy_load: Option<bool>,
-    pub size: Option<ImagePreviewSize>,
+    pub size: Option<Size>,
     pub protocol: Option<ImagePreviewProtocolValues>,
 }
 
@@ -714,21 +715,9 @@ impl ImagePreview {
         ImagePreviewValues {
             enabled: self.enabled.unwrap_or(true),
             lazy_load: self.lazy_load.unwrap_or(true),
-            size: self.size.unwrap_or_default(),
+            size: self.size.unwrap_or(Size { width: 66, height: 10 }),
             protocol: self.protocol.unwrap_or_default(),
         }
-    }
-}
-
-#[derive(Clone, Copy, Deserialize, Debug, PartialEq)]
-pub struct ImagePreviewSize {
-    pub width: usize,
-    pub height: usize,
-}
-
-impl Default for ImagePreviewSize {
-    fn default() -> Self {
-        ImagePreviewSize { width: 66, height: 10 }
     }
 }
 
@@ -1211,8 +1200,8 @@ impl From<IambProtocolType> for ProtocolType {
 #[strum_discriminants(derive(IntoStaticStr, VariantArray))]
 pub enum ImagePreviewUpdate {
     Enabled(bool),
-    Width(usize),
-    Height(usize),
+    Width(u16),
+    Height(u16),
     ProtocolType(IambProtocolType),
     ProtocolFilter(FilterType),
 
@@ -1225,7 +1214,7 @@ impl ImagePreviewUpdate {
         let res = match option {
             "size.width" => {
                 if let Some(value) = value {
-                    let width = usize::from_str(value)?;
+                    let width = u16::from_str(value)?;
                     Self::Width(width)
                 } else {
                     return Err(TunablesUpdateError::NoArguments);
@@ -1233,7 +1222,7 @@ impl ImagePreviewUpdate {
             },
             "size.height" => {
                 if let Some(value) = value {
-                    let height = usize::from_str(value)?;
+                    let height = u16::from_str(value)?;
                     Self::Height(height)
                 } else {
                     return Err(TunablesUpdateError::NoArguments);

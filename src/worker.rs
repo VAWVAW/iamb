@@ -12,7 +12,7 @@ use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::time::{Duration, Instant};
 
 use crate::base::{EchoLocation, MessageNeed, RoomNeeds};
-use crate::config::{ImagePreviewSize, ProxyUrl};
+use crate::config::ProxyUrl;
 use crate::message::{Message, MessageEvent, MessageId, MessageKey};
 use crate::notifications::register_notifications;
 use crate::preview::{PreviewKind, PreviewManager};
@@ -108,6 +108,7 @@ use matrix_sdk_base::RoomStateFilter;
 use modalkit::editing::completion::CompletionMap;
 use modalkit::errors::UIError;
 use modalkit::prelude::{EditInfo, InfoMessage};
+use ratatui::layout::Size;
 use ratatui_image::picker::Picker;
 use tokio::sync::Semaphore;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -951,7 +952,7 @@ pub enum WorkerTask {
     Members(OwnedRoomId, ClientReply<IambResult<Vec<RoomMember>>>),
     SpaceMembers(OwnedRoomId, ClientReply<IambResult<Vec<OwnedRoomId>>>),
     TypingNotice(OwnedRoomId),
-    LoadImage(MediaSource, PreviewKind, ImagePreviewSize, Arc<Picker>, Arc<Semaphore>),
+    LoadImage(MediaSource, PreviewKind, Size, Arc<Picker>, Arc<Semaphore>),
 }
 
 impl Debug for WorkerTask {
@@ -1204,7 +1205,7 @@ impl Requester {
         &self,
         source: MediaSource,
         kind: PreviewKind,
-        size: ImagePreviewSize,
+        size: Size,
         picker: Arc<Picker>,
         permits: Arc<Semaphore>,
     ) {

@@ -5,25 +5,25 @@ use matrix_sdk::{
     media::{MediaFormat, MediaRequestParameters, UniqueKey},
     ruma::events::room::MediaSource,
 };
-use ratatui::layout::{Rect, Size};
+use ratatui::layout::Size;
 use ratatui_image::{
     FilterType,
     Resize,
     picker::{Picker, ProtocolType},
-    protocol::Protocol,
+    sliced::SlicedProtocol,
 };
 use tokio::sync::Semaphore;
 
 use crate::{
     base::{AsyncProgramStore, IambError},
-    config::{ApplicationSettings, ImagePreviewSize, ImagePreviewValues},
+    config::{ApplicationSettings, ImagePreviewValues},
     worker::Requester,
 };
 
 pub enum ImageStatus {
-    Queued(ImagePreviewSize),
-    Downloading(ImagePreviewSize),
-    Loaded(Arc<Protocol>),
+    Queued(Size),
+    Downloading(Size),
+    Loaded(Arc<SlicedProtocol>),
     Error(String),
 }
 
@@ -34,10 +34,10 @@ pub enum PreviewKind {
 }
 
 impl PreviewKind {
-    fn image_size(self, image_preview: &ImagePreviewValues) -> ImagePreviewSize {
+    fn image_size(self, image_preview: &ImagePreviewValues) -> Size {
         match self {
             Self::Message => image_preview.size,
-            Self::Reaction => ImagePreviewSize { width: 2, height: 1 },
+            Self::Reaction => Size { width: 2, height: 1 },
         }
     }
 }
@@ -71,7 +71,7 @@ impl PreviewManager {
     /// Mark all registered previews as queued.
     ///
     /// Useful when changing preview settings.
-    pub fn mark_all_queued(&mut self, size: ImagePreviewSize) {
+    pub fn mark_all_queued(&mut self, size: Size) {
         for status in self.previews.values_mut() {
             *status = ImageStatus::Queued(size);
         }
@@ -164,30 +164,6 @@ fn picker_from_settings(settings: &ApplicationSettings) -> Picker {
     picker
 }
 
-impl From<ImagePreviewSize> for Rect {
-    fn from(value: ImagePreviewSize) -> Self {
-        Rect::new(0, 0, value.width as _, value.height as _)
-    }
-}
-
-impl From<ImagePreviewSize> for Size {
-    fn from(value: ImagePreviewSize) -> Self {
-        Size::new(value.width as _, value.height as _)
-    }
-}
-
-impl From<Rect> for ImagePreviewSize {
-    fn from(rect: Rect) -> Self {
-        ImagePreviewSize { width: rect.width as _, height: rect.height as _ }
-    }
-}
-
-impl From<Size> for ImagePreviewSize {
-    fn from(size: Size) -> Self {
-        ImagePreviewSize { width: size.width as _, height: size.height as _ }
-    }
-}
-
 pub async fn load_image(
     store: AsyncProgramStore,
     media: Media,
@@ -195,14 +171,14 @@ pub async fn load_image(
     kind: PreviewKind,
     picker: Arc<Picker>,
     permits: Arc<Semaphore>,
-    size: ImagePreviewSize,
+    size: Size,
 ) {
     async fn load_image_inner(
         media: Media,
         source: MediaSource,
         picker: Arc<Picker>,
         permits: Arc<Semaphore>,
-        size: ImagePreviewSize,
+        size: Size,
         filter: FilterType,
     ) -> Result<ImageStatus, IambError> {
         let reader = media
@@ -221,8 +197,7 @@ pub async fn load_image(
         let handle = tokio::task::spawn_blocking(move || {
             let image = reader.decode().map_err(IambError::Image)?;
 
-            picker
-                .new_protocol(image, size.into(), Resize::Fit(Some(filter)))
+            SlicedProtocol::new_with_resize(&picker, image, size, Resize::Fit(Some(filter)))
                 .map_err(|err| IambError::Preview(err.to_string()))
         });
 
