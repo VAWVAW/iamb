@@ -543,7 +543,7 @@ impl MessageEvent {
             MessageEvent::Local(_, _, content) => content,
             MessageEvent::Sticker(..) => return tunables.colors.message_sticker,
             MessageEvent::Poll(..) | MessageEvent::UnstablePoll(..) => {
-                return tunables.colors.message_other;
+                return tunables.colors.message_poll;
             },
         };
 

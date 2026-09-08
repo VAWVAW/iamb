@@ -756,6 +756,7 @@ pub struct Colorscheme {
     pub message_state: Option<Color>,
     pub message_sticker: Option<Color>,
     pub message_redacted: Option<Color>,
+    pub message_poll: Option<Color>,
     pub message_notice: Option<Color>,
     pub message_other: Option<Color>,
     pub codeblock_background: Option<Color>,
@@ -790,6 +791,7 @@ impl Colorscheme {
             message_state: self.message_state.or(other.message_state),
             message_sticker: self.message_state.or(other.message_sticker),
             message_redacted: self.message_redacted.or(other.message_redacted),
+            message_poll: self.message_poll.or(other.message_poll),
             message_notice: self.message_notice.or(other.message_notice),
             message_other: self.message_other.or(other.message_other),
             codeblock_background: self.codeblock_background.or(other.codeblock_background),
@@ -819,6 +821,7 @@ pub struct ColorschemeValues {
     pub message_state: Style,
     pub message_sticker: Style,
     pub message_redacted: Style,
+    pub message_poll: Style,
     pub message_notice: Style,
     pub message_other: Style,
     pub codeblock_background: Style,
@@ -855,6 +858,7 @@ impl Colorscheme {
         let message_state = self.message_state.map(Into::into).unwrap_or(message_normal);
         let message_sticker = self.message_sticker.map(Into::into).unwrap_or(message_normal);
         let message_redacted = self.message_redacted.map(Into::into).unwrap_or(message_normal);
+        let message_poll = self.message_poll.map(Into::into).unwrap_or(message_normal);
         let message_notice = self.message_notice.map(Into::into).unwrap_or(message_state);
         let message_other = self.message_other.map(Into::into).unwrap_or(message_normal);
         let codeblock_background =
@@ -881,6 +885,7 @@ impl Colorscheme {
             message_state,
             message_sticker,
             message_redacted,
+            message_poll,
             message_notice,
             message_other,
             codeblock_background,
@@ -1014,6 +1019,7 @@ pub enum ColorsUpdate {
     MessageNormal(Option<Color>),
     MessageState(Option<Color>),
     MessageRedacted(Option<Color>),
+    MessagePoll(Option<Color>),
     MessageNotice(Option<Color>),
     MessageOther(Option<Color>),
     CodeblockBackground(Option<Color>),
@@ -1049,6 +1055,7 @@ impl ColorsUpdate {
             "messagenormal" => Self::MessageNormal(value),
             "messagestate" => Self::MessageState(value),
             "messageredacted" => Self::MessageRedacted(value),
+            "messagepoll" => Self::MessagePoll(value),
             "messagenotice" => Self::MessageNotice(value),
             "messageother" => Self::MessageOther(value),
             "codeblockbackground" => Self::CodeblockBackground(value),
@@ -2394,6 +2401,10 @@ impl ApplicationSettings {
                     },
                     ColorsUpdate::MessageRedacted(color) => {
                         self.tunables.colors.message_redacted =
+                            color.map(Into::into).unwrap_or(self.tunables.colors.message_normal)
+                    },
+                    ColorsUpdate::MessagePoll(color) => {
+                        self.tunables.colors.message_poll =
                             color.map(Into::into).unwrap_or(self.tunables.colors.message_normal)
                     },
                     ColorsUpdate::MessageNotice(color) => {
