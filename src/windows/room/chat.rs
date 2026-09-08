@@ -785,6 +785,8 @@ pub async fn msg_react(
 
             return Err(err);
         },
+        MessageEvent::Poll(ev) => ev.event_id().to_owned(),
+        MessageEvent::UnstablePoll(ev) => ev.event_id().to_owned(),
     };
 
     if info.user_reactions_contains(&settings.profile.user_id, &event_id, &emoji) {
@@ -847,6 +849,8 @@ pub async fn msg_redact(
 
             return Err(err);
         },
+        MessageEvent::Poll(ev) => ev.event_id().to_owned(),
+        MessageEvent::UnstablePoll(ev) => ev.event_id().to_owned(),
     };
 
     let event_id = event_id.as_ref();
@@ -905,6 +909,8 @@ pub async fn msg_unreact(
 
             return Err(err);
         },
+        MessageEvent::Poll(ev) => ev.event_id().to_owned(),
+        MessageEvent::UnstablePoll(ev) => ev.event_id().to_owned(),
     };
 
     let reactions = match info.reactions.get(&event_id) {

@@ -68,6 +68,10 @@ pub async fn register_notifications(client: &Client, store: &AsyncProgramStore) 
                                     return;
                                 }
 
+                                let Some(body) = body else {
+                                    return;
+                                };
+
                                 if is_missing_mention(&body, mode, &client) {
                                     return;
                                 }
@@ -78,8 +82,7 @@ pub async fn register_notifications(client: &Client, store: &AsyncProgramStore) 
                                     return;
                                 }
 
-                                send_notification(&summary, body.as_deref(), room_id, &mut locked)
-                                    .await;
+                                send_notification(&summary, &body, room_id, &mut locked).await;
                             },
                             Err(err) => {
                                 tracing::error!("Failed to extract notification data: {err}")
@@ -98,7 +101,7 @@ pub async fn register_notifications(client: &Client, store: &AsyncProgramStore) 
 
 async fn send_notification(
     summary: &str,
-    body: Option<&str>,
+    body: &str,
     room_id: OwnedRoomId,
     store: &mut ProgramStore,
 ) {
@@ -124,7 +127,7 @@ async fn send_notification_bell(store: &mut ProgramStore) {
 #[cfg_attr(target_os = "macos", allow(unused_variables))]
 async fn send_notification_desktop(
     summary: &str,
-    body: Option<&str>,
+    body: &str,
     room_id: OwnedRoomId,
     store: &mut ProgramStore,
 ) {
@@ -142,9 +145,7 @@ async fn send_notification_desktop(
     #[cfg(all(unix, not(target_os = "macos")))]
     desktop_notification.urgency(notify_rust::Urgency::Normal);
 
-    if store.application.settings.tunables.notifications.show_message &&
-        let Some(body) = body
-    {
+    if store.application.settings.tunables.notifications.show_message {
         desktop_notification.body(body);
     }
 
@@ -188,10 +189,8 @@ async fn global_or_room_mode(
         .await
 }
 
-fn is_missing_mention(body: &Option<String>, mode: RoomNotificationMode, client: &Client) -> bool {
-    if let Some(body) = body &&
-        mode == RoomNotificationMode::MentionsAndKeywordsOnly
-    {
+fn is_missing_mention(body: &str, mode: RoomNotificationMode, client: &Client) -> bool {
+    if mode == RoomNotificationMode::MentionsAndKeywordsOnly {
         let mentioned = match client.user_id() {
             Some(user_id) => body.contains(user_id.localpart()),
             _ => false,
@@ -290,6 +289,13 @@ pub fn event_notification_body(event: &AnySyncTimelineEvent, sender_name: &str) 
             Some(body)
         },
         AnyMessageLikeEventContent::Sticker(_) => Some(format!("{sender_name} sent a sticker.")),
+        AnyMessageLikeEventContent::PollStart(_) |
+        AnyMessageLikeEventContent::UnstablePollStart(_) => {
+            Some(format!("{sender_name} started a poll."))
+        },
+        AnyMessageLikeEventContent::PollEnd(_) | AnyMessageLikeEventContent::UnstablePollEnd(_) => {
+            Some(format!("{sender_name} closed a poll."))
+        },
         _ => None,
     }
 }
