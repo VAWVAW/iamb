@@ -507,13 +507,13 @@ fn complete_iamb_space(args: Vec<String>, store: &ChatStore) -> Vec<String> {
         if arg.is_empty() {
             let mut opts = complete_options(args.as_slice(), &options);
             if !has_room {
-                opts.extend(complete_matrix_names(arg, store));
+                opts.extend(complete_room_alias_or_id(arg, store));
             }
             opts
         } else if arg.starts_with('+') {
             complete_options(args.as_slice(), &options)
         } else if !has_room {
-            complete_matrix_names(arg, store)
+            complete_room_alias_or_id(arg, store)
         } else {
             vec![]
         }
