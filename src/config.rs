@@ -1210,6 +1210,7 @@ pub struct ApplicationSettings {
     pub session_json_old: PathBuf,
     pub sled_dir: PathBuf,
     pub sqlite_dir: PathBuf,
+    pub sqlite_cache_dir: PathBuf,
     pub profile_name: String,
     pub profile: ProfileConfig,
     pub tunables: TunableValues,
@@ -1343,12 +1344,16 @@ impl ApplicationSettings {
         let mut layout_json = cache_dir.clone();
         layout_json.push("layout.json");
 
+        let mut sqlite_cache_dir = cache_dir;
+        sqlite_cache_dir.push("sqlite");
+
         let settings = ApplicationSettings {
             sled_dir,
             layout_json,
             session_json,
             session_json_old,
             sqlite_dir,
+            sqlite_cache_dir,
             profile_name,
             profile,
             tunables,
