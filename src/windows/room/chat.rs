@@ -571,6 +571,7 @@ impl ChatState {
                             .trim_end()
                             .to_string();
                     if edited_msg.is_empty() {
+                        self.tbox.reset();
                         return Ok(None);
                     }
                     edited_msg
