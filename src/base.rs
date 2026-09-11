@@ -1,112 +1,50 @@
 //! # Common types and utilities
 //!
 //! The types defined here get used throughout iamb.
-use std::borrow::Cow;
+
 use std::collections::hash_map::{Entry, IntoIter};
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::convert::TryFrom;
-use std::fmt::{self, Display};
-use std::hash::Hash;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::collections::{BTreeSet, HashSet};
 
 use emojis::Emoji;
-
 use matrix_sdk::Client;
-use matrix_sdk::encryption::verification::VerificationRequest;
+use matrix_sdk::ruma::events::reaction::ReactionEvent;
+use matrix_sdk::ruma::events::relation::Replacement;
+use matrix_sdk::ruma::events::room::encrypted::RoomEncryptedEvent;
+use matrix_sdk::ruma::events::room::message::{
+    RoomMessageEvent,
+    RoomMessageEventContentWithoutRelation,
+};
+use matrix_sdk::ruma::events::room::redaction::{
+    OriginalSyncRoomRedactionEvent,
+    SyncRoomRedactionEvent,
+};
+use matrix_sdk::ruma::events::sticker::{StickerEvent, StickerEventContent};
+use matrix_sdk::ruma::events::{MessageLikeEvent, OriginalMessageLikeEvent};
+use matrix_sdk::ruma::presence::PresenceState;
 use matrix_sdk::ruma::room::{AllowRule, Restricted};
-use ratatui::{
-    buffer::Buffer,
-    layout::{Alignment, Rect},
-    text::{Line, Span},
-    widgets::{Paragraph, Widget},
+use matrix_sdk::ruma::{OwnedMxcUri, OwnedTransactionId, RoomVersionId};
+use modalkit::editing::application::{
+    ApplicationAction,
+    ApplicationContentId,
+    ApplicationError,
+    ApplicationInfo,
+    ApplicationStore,
+    ApplicationWindowId,
 };
-use serde::{
-    Deserialize,
-    Deserializer,
-    Serialize,
-    Serializer,
-    de::Error as SerdeError,
-    de::Visitor,
-};
+use modalkit::editing::completion::CompletionMap;
+use modalkit::editing::context::EditContext;
+use modalkit::editing::store::Store;
+use modalkit::env::vim::command::{CommandContext, VimCommand, VimCommandMachine};
+use modalkit::env::vim::keybindings::VimMachine;
+use modalkit::errors::UIResult;
+use modalkit::keybindings::SequenceStatus;
+use serde::de::Error as SerdeError;
+use serde::de::Visitor;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tokio::sync::Mutex as AsyncMutex;
-use url::Url;
 
-use matrix_sdk::{
-    RoomState as MatrixRoomState,
-    room::Room as MatrixRoom,
-    ruma::{
-        EventId,
-        OwnedEventId,
-        OwnedMxcUri,
-        OwnedRoomAliasId,
-        OwnedRoomId,
-        OwnedRoomOrAliasId,
-        OwnedTransactionId,
-        OwnedUserId,
-        RoomId,
-        RoomVersionId,
-        UserId,
-        events::{
-            AnySyncStateEvent,
-            MessageLikeEvent,
-            OriginalMessageLikeEvent,
-            reaction::ReactionEvent,
-            receipt::ReceiptThread,
-            relation::{Replacement, Thread},
-            room::MediaSource,
-            room::encrypted::RoomEncryptedEvent,
-            room::message::{
-                MessageType,
-                OriginalRoomMessageEvent,
-                Relation,
-                RoomMessageEvent,
-                RoomMessageEventContent,
-                RoomMessageEventContentWithoutRelation,
-            },
-            room::redaction::{OriginalSyncRoomRedactionEvent, SyncRoomRedactionEvent},
-            sticker::{StickerEvent, StickerEventContent},
-            tag::{TagName, Tags},
-        },
-        presence::PresenceState,
-        profile::{ProfileFieldName, ProfileFieldValue},
-        room::JoinRule,
-    },
-};
-
-use modalkit::{
-    actions::Action,
-    editing::{
-        application::{
-            ApplicationAction,
-            ApplicationContentId,
-            ApplicationError,
-            ApplicationInfo,
-            ApplicationStore,
-            ApplicationWindowId,
-        },
-        completion::CompletionMap,
-        context::EditContext,
-        store::Store,
-    },
-    env::vim::{
-        command::{CommandContext, VimCommand, VimCommandMachine},
-        keybindings::VimMachine,
-    },
-    errors::{UIError, UIResult},
-    key::TerminalKey,
-    keybindings::SequenceStatus,
-    prelude::{CommandType, MoveDir1D, WordStyle},
-};
-
-use crate::preview::PreviewKind;
-use crate::{
-    config::ApplicationSettings,
-    message::{Message, MessageEvent, MessageKey, MessageTimeStamp, Messages},
-    notifications::NotificationHandle,
-    preview::PreviewManager,
-    worker::Requester,
-};
+use crate::notifications::NotificationHandle;
+use crate::prelude::*;
 
 /// The set of characters used in different Matrix IDs.
 pub const MATRIX_ID_WORD: WordStyle = WordStyle::CharSet(is_mxid_char);
@@ -2307,19 +2245,19 @@ impl ApplicationInfo for IambInfo {
 
 #[cfg(test)]
 pub mod tests {
+    use super::*;
+
     use std::iter::FromIterator as _;
 
-    use super::*;
-    use crate::config::user_style_from_color;
-    use crate::tests::*;
-    use matrix_sdk::ruma::{
-        MilliSecondsSinceUnixEpoch,
-        events::{reaction::ReactionEventContent, relation::Annotation},
-        owned_event_id,
-    };
+    use matrix_sdk::ruma::events::reaction::ReactionEventContent;
+    use matrix_sdk::ruma::events::relation::Annotation;
+    use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, owned_event_id};
     use pretty_assertions::assert_eq;
     use ratatui::style::Color;
     use serde_json::{Map, Value};
+
+    use crate::config::user_style_from_color;
+    use crate::tests::*;
 
     fn create_reaction_event(
         content: &ReactionEventContent,

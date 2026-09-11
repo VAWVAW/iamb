@@ -1,62 +1,23 @@
 //! Message scrollback
+use modalkit::actions::{
+    CursorAction,
+    EditAction,
+    EditorActions,
+    HistoryAction,
+    Searchable,
+    SelectionAction,
+};
+use modalkit::editing::cursor::{CursorGroup, CursorState};
+use modalkit::editing::history::HistoryList;
+use modalkit::editing::store::{RegisterCell, RegisterPutFlags};
+use modalkit::errors::UIResult;
+use modalkit_ratatui::ScrollActions;
 use ratatui_image::sliced::{SignedPosition, SlicedImage};
 use regex::Regex;
 
-use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId};
-
-use modalkit_ratatui::{ScrollActions, TerminalCursor, WindowOps};
-use ratatui::{
-    buffer::Buffer,
-    layout::{Alignment, Rect},
-    style::{Modifier as StyleModifier, Style},
-    text::{Line, Span},
-    widgets::{Paragraph, StatefulWidget, Widget},
-};
-
-use modalkit::actions::{
-    Action,
-    CursorAction,
-    EditAction,
-    Editable,
-    EditorAction,
-    EditorActions,
-    HistoryAction,
-    InsertTextAction,
-    Jumpable,
-    PromptAction,
-    Promptable,
-    Scrollable,
-    Searchable,
-    SelectionAction,
-    WindowAction,
-};
-use modalkit::editing::{
-    completion::CompletionList,
-    context::Resolve,
-    cursor::{CursorGroup, CursorState},
-    history::HistoryList,
-    rope::EditRope,
-    store::{RegisterCell, RegisterPutFlags},
-};
-use modalkit::errors::{EditError, EditResult, UIError, UIResult};
-use modalkit::prelude::*;
-
-use crate::{
-    base::{
-        IambBufferId,
-        IambId,
-        IambInfo,
-        IambResult,
-        ProgramContext,
-        ProgramStore,
-        RoomFetchStatus,
-        RoomFocus,
-        RoomInfo,
-    },
-    config::ApplicationSettings,
-    message::{Message, MessageCursor, MessageKey, Messages},
-    preview::{PreviewKind, PreviewManager},
-};
+use crate::base::RoomFetchStatus;
+use crate::message::MessageCursor;
+use crate::prelude::*;
 
 fn no_msgs() -> EditError<IambInfo> {
     let msg = "No messages to select.";
@@ -1535,7 +1496,9 @@ impl StatefulWidget for Scrollback<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{base::Need, tests::*};
+
+    use crate::base::Need;
+    use crate::tests::*;
 
     #[tokio::test]
     async fn test_search_messages() {

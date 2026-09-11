@@ -6,84 +6,22 @@
 //! Additionally, some of the iamb commands delegate behaviour to the current UI element. For
 //! example, [sending messages][crate::base::SendAction] delegate to the [room window][RoomState],
 //! where we have the message bar and room ID easily accessible and resettable.
-use std::cmp::{Ord, Ordering};
-use std::fmt::{self, Display};
-use std::ops::Deref;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 
-use matrix_sdk::{
-    RoomState as MatrixRoomState,
-    room::{Room as MatrixRoom, RoomMember},
-    ruma::{
-        OwnedRoomAliasId,
-        OwnedRoomId,
-        RoomAliasId,
-        RoomId,
-        events::room::member::MembershipState,
-        events::tag::{TagName, Tags},
-    },
-};
+use std::cmp::Ord;
+use std::fmt::{self};
 
-use ratatui::{
-    buffer::Buffer,
-    layout::{Alignment, Rect},
-    style::{Color, Modifier as StyleModifier, Style},
-    text::{Line, Span, Text},
-    widgets::StatefulWidget,
-};
-
-use modalkit::{
-    actions::{
-        Action,
-        Editable,
-        EditorAction,
-        Jumpable,
-        PromptAction,
-        Promptable,
-        Scrollable,
-        WindowAction,
-    },
-    editing::completion::CompletionList,
-    errors::{EditError, EditResult, UIError},
-    prelude::*,
-};
-
-use modalkit_ratatui::{
-    TermOffset,
-    TerminalCursor,
-    Window,
-    WindowOps,
-    list::{List, ListCursor, ListItem, ListState},
-};
-
-use crate::base::{
-    ChatStore,
-    IambBufferId,
-    IambError,
-    IambId,
-    IambInfo,
-    IambResult,
-    MessageAction,
-    ProgramAction,
-    ProgramContext,
-    ProgramStore,
-    RoomAction,
-    SendAction,
-    SortColumn,
-    SortFieldRoom,
-    SortFieldUser,
-    SortOrder,
-    SpaceAction,
-    UnreadInfo,
-};
-use crate::windows::room::room_command;
-
-use self::room::RoomState;
-use self::verify::VerifyItem;
-use self::welcome::WelcomeState;
-use crate::message::MessageTimeStamp;
 use feruca::Collator;
+use matrix_sdk::room::RoomMember;
+use matrix_sdk::ruma::RoomAliasId;
+use matrix_sdk::ruma::events::room::member::MembershipState;
+use modalkit_ratatui::Window;
+use modalkit_ratatui::list::{List, ListCursor, ListItem, ListState};
+
+use crate::base::{SortColumn, SortFieldRoom, SortFieldUser, SortOrder, UnreadInfo};
+use crate::prelude::*;
+use crate::windows::room::{RoomState, room_command};
+use crate::windows::verify::VerifyItem;
+use crate::windows::welcome::WelcomeState;
 
 pub mod room;
 pub mod verify;
@@ -1587,6 +1525,7 @@ impl Promptable<ProgramContext, ProgramStore, IambInfo> for MemberItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, room_alias_id, server_name};
 
     #[derive(Debug, Eq, PartialEq)]

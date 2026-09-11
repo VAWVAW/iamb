@@ -2,116 +2,81 @@
 //!
 //! The worker thread handles asynchronous work, and can receive messages from the main thread that
 //! block on a reply from the async worker.
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::fmt::{Debug, Formatter};
-use std::ops::DerefMut;
-use std::str::FromStr;
-use std::sync::Arc;
-use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
-use std::time::{Duration, Instant};
 
-use futures::{StreamExt, stream::FuturesUnordered};
+use std::fmt::{Debug, Formatter};
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+
+use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use gethostname::gethostname;
+use matrix_sdk::authentication::matrix::MatrixSession;
+use matrix_sdk::config::{RequestConfig, SyncSettings};
+use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
+use matrix_sdk::event_handler::Ctx;
+use matrix_sdk::room::{Messages as MatrixMessages, MessagesOptions, RoomMember};
+use matrix_sdk::ruma::api::client::filter::{
+    FilterDefinition,
+    LazyLoadOptions,
+    RoomEventFilter,
+    RoomFilter,
+};
+use matrix_sdk::ruma::api::client::room::Visibility;
+use matrix_sdk::ruma::api::client::room::create_room::v3::{
+    CreationContent,
+    Request as CreateRoomRequest,
+};
+use matrix_sdk::ruma::api::client::space::get_hierarchy::v1::Request as SpaceHierarchyRequest;
+use matrix_sdk::ruma::assign;
 use matrix_sdk::ruma::events::key::verification::ready::{
     OriginalSyncKeyVerificationReadyEvent,
     ToDeviceKeyVerificationReadyEvent,
 };
+use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
+use matrix_sdk::ruma::events::key::verification::start::{
+    OriginalSyncKeyVerificationStartEvent,
+    ToDeviceKeyVerificationStartEvent,
+};
+use matrix_sdk::ruma::events::presence::PresenceEvent;
+use matrix_sdk::ruma::events::reaction::ReactionEventContent;
+use matrix_sdk::ruma::events::receipt::{ReceiptEventContent, ReceiptType};
+use matrix_sdk::ruma::events::room::encryption::RoomEncryptionEventContent;
+use matrix_sdk::ruma::events::room::member::OriginalSyncRoomMemberEvent;
+use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
+use matrix_sdk::ruma::events::room::redaction::OriginalSyncRoomRedactionEvent;
+use matrix_sdk::ruma::events::sticker::StickerEventContent;
+use matrix_sdk::ruma::events::typing::SyncTypingEvent;
+use matrix_sdk::ruma::events::{
+    AnyMessageLikeEvent,
+    AnyMessageLikeEventContent,
+    AnyTimelineEvent,
+    InitialStateEvent,
+    SyncEphemeralRoomEvent,
+    SyncMessageLikeEvent,
+    SyncStateEvent,
+};
+use matrix_sdk::ruma::room::RoomType;
+use matrix_sdk::ruma::serde::Raw;
+use matrix_sdk::send_queue::{LocalEcho, LocalEchoContent, RoomSendQueueUpdate, SendQueueUpdate};
+use matrix_sdk::{
+    ClientBuildError,
+    Error as MatrixError,
+    RoomDisplayName,
+    RoomMemberships,
+    reqwest,
+};
 use matrix_sdk_base::RoomStateFilter;
-use ratatui::layout::Size;
 use ratatui_image::picker::Picker;
 use tokio::sync::Semaphore;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinHandle;
 use tracing::{Instrument as _, error, warn};
-use url::Url;
 
-use matrix_sdk::{
-    Client,
-    ClientBuildError,
-    Error as MatrixError,
-    RoomDisplayName,
-    RoomMemberships,
-    authentication::matrix::MatrixSession,
-    config::{RequestConfig, SyncSettings},
-    encryption::{BackupDownloadStrategy, EncryptionSettings},
-    event_handler::Ctx,
-    reqwest,
-    room::{Messages, MessagesOptions, Room as MatrixRoom, RoomMember},
-    ruma::{
-        EventId,
-        OwnedEventId,
-        OwnedRoomId,
-        OwnedRoomOrAliasId,
-        OwnedUserId,
-        RoomId,
-        api::client::{
-            filter::{FilterDefinition, LazyLoadOptions, RoomEventFilter, RoomFilter},
-            room::{
-                Visibility,
-                create_room::v3::{CreationContent, Request as CreateRoomRequest},
-            },
-            space::get_hierarchy::v1::Request as SpaceHierarchyRequest,
-        },
-        assign,
-        events::{
-            AnyMessageLikeEvent,
-            AnyMessageLikeEventContent,
-            AnySyncStateEvent,
-            AnyTimelineEvent,
-            InitialStateEvent,
-            SyncEphemeralRoomEvent,
-            SyncMessageLikeEvent,
-            SyncStateEvent,
-            key::verification::{
-                request::ToDeviceKeyVerificationRequestEvent,
-                start::{OriginalSyncKeyVerificationStartEvent, ToDeviceKeyVerificationStartEvent},
-            },
-            presence::PresenceEvent,
-            reaction::ReactionEventContent,
-            receipt::{ReceiptEventContent, ReceiptThread, ReceiptType},
-            relation::Thread,
-            room::{
-                MediaSource,
-                encryption::RoomEncryptionEventContent,
-                member::OriginalSyncRoomMemberEvent,
-                message::{MessageType, Relation, RoomMessageEventContent},
-                name::RoomNameEventContent,
-                redaction::OriginalSyncRoomRedactionEvent,
-            },
-            sticker::StickerEventContent,
-            tag::Tags,
-            typing::SyncTypingEvent,
-        },
-        room::RoomType,
-        serde::Raw,
-    },
-    send_queue::{LocalEcho, LocalEchoContent, RoomSendQueueUpdate, SendQueueUpdate},
-};
-
-use modalkit::errors::UIError;
-use modalkit::prelude::{EditInfo, InfoMessage};
-
-use crate::base::{EchoLocation, MessageNeed};
+use crate::base::{CreateRoomFlags, CreateRoomType, EchoLocation, MessageNeed, RoomFetchStatus};
 use crate::config::ProxyUrl;
-use crate::message::{Message, MessageEvent, MessageId, MessageKey};
+use crate::message::MessageId;
 use crate::notifications::register_notifications;
-use crate::preview::PreviewKind;
+use crate::prelude::*;
 use crate::verifications;
-use crate::{
-    ApplicationSettings,
-    base::{
-        AsyncProgramStore,
-        ChatStore,
-        CreateRoomFlags,
-        CreateRoomType,
-        IambError,
-        IambResult,
-        ProgramStore,
-        RoomFetchStatus,
-        RoomInfo,
-    },
-};
 
 const DEFAULT_ENCRYPTION_SETTINGS: EncryptionSettings = EncryptionSettings {
     auto_enable_cross_signing: true,
@@ -265,7 +230,8 @@ async fn load_older_one(
         };
         opts.limit = limit.into();
 
-        let Messages { end, chunk, .. } = room.messages(opts).await.map_err(IambError::from)?;
+        let MatrixMessages { end, chunk, .. } =
+            room.messages(opts).await.map_err(IambError::from)?;
 
         let mut msgs = vec![];
 

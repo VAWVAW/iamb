@@ -1,75 +1,41 @@
 //! # Room Messages
-use std::borrow::Cow;
-use std::cmp::{Ord, Ordering, PartialOrd};
-use std::collections::BTreeMap;
+
+use std::cmp::{Ord, PartialOrd};
 use std::collections::hash_map::DefaultHasher;
-use std::convert::{TryFrom, TryInto};
-use std::fmt::{self, Display};
+use std::convert::TryInto;
 use std::hash::{Hash, Hasher};
-use std::ops::{Deref, DerefMut};
 
 use chrono::{DateTime, Local as LocalTz};
 use humansize::{DECIMAL, format_size};
 use matrix_sdk::ruma::OwnedTransactionId;
-use matrix_sdk::ruma::events::receipt::ReceiptThread;
-use matrix_sdk::ruma::events::room::MediaSource;
+use matrix_sdk::ruma::UInt;
+use matrix_sdk::ruma::events::RedactedUnsigned;
+use matrix_sdk::ruma::events::room::encrypted::{
+    OriginalRoomEncryptedEvent,
+    RedactedRoomEncryptedEvent,
+    RoomEncryptedEvent,
+};
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContentWithoutRelation;
+use matrix_sdk::ruma::events::room::message::{
+    FormattedBody,
+    MessageFormat,
+    RedactedRoomMessageEvent,
+    RoomMessageEvent,
+};
+use matrix_sdk::ruma::events::room::redaction::SyncRoomRedactionEvent;
 use matrix_sdk::ruma::events::sticker::{OriginalStickerEvent, RedactedStickerEvent, StickerEvent};
 use matrix_sdk::ruma::events::{AnyRedactionEvent, MessageLikeEvent};
 use matrix_sdk::send_queue::SendHandle;
-use ratatui::layout::Size;
-use ratatui::style::Color;
-use ratatui_image::sliced::SlicedProtocol;
-use unicode_width::UnicodeWidthStr;
-
-use matrix_sdk::ruma::{
-    EventId,
-    MilliSecondsSinceUnixEpoch,
-    OwnedEventId,
-    OwnedUserId,
-    UInt,
-    events::{
-        AnySyncStateEvent,
-        RedactedUnsigned,
-        relation::Thread,
-        room::{
-            encrypted::{
-                OriginalRoomEncryptedEvent,
-                RedactedRoomEncryptedEvent,
-                RoomEncryptedEvent,
-            },
-            message::{
-                FormattedBody,
-                MessageFormat,
-                MessageType,
-                OriginalRoomMessageEvent,
-                RedactedRoomMessageEvent,
-                Relation,
-                RoomMessageEvent,
-                RoomMessageEventContent,
-            },
-            redaction::SyncRoomRedactionEvent,
-        },
-    },
-};
-
-use ratatui::{
-    style::{Modifier as StyleModifier, Style},
-    symbols::line::THICK_VERTICAL,
-    text::{Line, Span, Text},
-};
-
 use modalkit::editing::cursor::Cursor;
-use modalkit::prelude::*;
+use ratatui::symbols::line::THICK_VERTICAL;
+use ratatui_image::sliced::SlicedProtocol;
 
 use crate::base::MessageEdits;
-use crate::preview::{ImageStatus, PreviewKind, PreviewManager};
-use crate::{
-    base::RoomInfo,
-    config::ApplicationSettings,
-    message::html::{StyleTree, parse_matrix_html},
-    util::{replace_emojis_in_str, space, space_span, take_width, wrapped_text},
-};
+use crate::message::html::{StyleTree, parse_matrix_html};
+use crate::message::state::{body_cow_state, html_state};
+use crate::prelude::*;
+use crate::preview::ImageStatus;
+use crate::util::{replace_emojis_in_str, space, space_span, take_width, wrapped_text};
 
 mod compose;
 mod html;
@@ -77,8 +43,7 @@ mod printer;
 mod state;
 
 pub use self::compose::{text_to_message, text_to_text_message_event_content};
-use self::state::{body_cow_state, html_state};
-pub use html::TreeGenState;
+pub use self::html::TreeGenState;
 
 type ProtocolPreview<'a> = (&'a SlicedProtocol, u16, u16);
 
@@ -1473,20 +1438,19 @@ impl Display for Message {
 
 #[cfg(test)]
 pub mod tests {
-    use matrix_sdk::ruma::events::room::{
-        ImageInfo,
-        message::{
-            AudioInfo,
-            AudioMessageEventContent,
-            FileInfo,
-            FileMessageEventContent,
-            ImageMessageEventContent,
-            VideoInfo,
-            VideoMessageEventContent,
-        },
+    use super::*;
+
+    use matrix_sdk::ruma::events::room::ImageInfo;
+    use matrix_sdk::ruma::events::room::message::{
+        AudioInfo,
+        AudioMessageEventContent,
+        FileInfo,
+        FileMessageEventContent,
+        ImageMessageEventContent,
+        VideoInfo,
+        VideoMessageEventContent,
     };
 
-    use super::*;
     use crate::tests::*;
 
     #[test]
