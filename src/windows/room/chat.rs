@@ -19,6 +19,7 @@ use matrix_sdk::ruma::events::room::message::{
     ForwardThread,
     MessageFormat,
     ReplyWithinThread,
+    TextMessageEventContent,
 };
 use matrix_sdk::send_queue::RoomSendQueueError;
 use modalkit::editing::history::{self, HistoryList};
@@ -518,6 +519,14 @@ impl ChatState {
             .filter(|c| !c.is_blank())
             .map(|c| c.trim_end().to_string())
             .and_then(|c| text_to_text_message_event_content(c, settings.tunables.default_markup));
+
+        let mentions = if let Some(content) = &config.caption {
+            extract_mentions(content)
+        } else {
+            Mentions::new()
+        };
+        config.mentions = Some(mentions);
+
         config.reply = self.generate_reply_info(info, add_caption);
         config
     }
@@ -555,30 +564,13 @@ impl ChatState {
                     msg.trim_end().to_string()
                 };
 
-                let mut msg = text_to_message(msg, tunables.default_markup);
+                let mut msg = text_to_message(msg.into(), tunables.default_markup);
 
-                // extract mentions from matrix links
-                let mut mentions = Mentions::new();
-                if let MessageType::Text(content) = &msg.msgtype &&
-                    let Some(formatted) = &content.formatted &&
-                    matches!(&formatted.format, MessageFormat::Html)
-                {
-                    let html = formatted.body.as_str();
-
-                    let re =
-                        Regex::new(r#"<a href="(https://matrix.to/#/@[^"]*:[^"]*)">"#).unwrap();
-
-                    let user_ids = re.captures_iter(html).map(|capture| {
-                        let link = capture.get(1).unwrap().as_str();
-                        let uri = MatrixToUri::parse(link).unwrap();
-                        let MatrixId::User(user_id) = uri.id() else {
-                            unreachable!()
-                        };
-                        user_id.to_owned()
-                    });
-
-                    mentions = Mentions::with_user_ids(user_ids);
-                }
+                let mentions = if let MessageType::Text(content) = &msg.msgtype {
+                    extract_mentions(content)
+                } else {
+                    Mentions::new()
+                };
                 msg = msg.add_mentions(mentions);
 
                 if let Some(key) = &self.editing {
@@ -1191,6 +1183,31 @@ fn open_command(open_command: Option<&Vec<String>>, target: OsString) -> IambRes
         });
         return Ok(());
     }
+}
+
+/// Extract mentions from `https://matrix.to` html links
+fn extract_mentions(content: &TextMessageEventContent) -> Mentions {
+    let Some(formatted) = content.formatted.as_ref() else {
+        return Mentions::new();
+    };
+    if !matches!(formatted.format, MessageFormat::Html) {
+        return Mentions::new();
+    }
+    let html = formatted.body.as_str();
+
+    let re = Regex::new(r#"<a href="(https://matrix.to/#/@[^"]*:[^"]*)">"#).unwrap();
+
+    let user_ids = re.captures_iter(html).map(|capture| {
+        let link = capture.get(1).unwrap().as_str();
+        let uri = MatrixToUri::parse(link).unwrap();
+        let MatrixId::User(user_id) = uri.id() else {
+            // we only matched user links (starting with `@`)
+            unreachable!()
+        };
+        user_id.to_owned()
+    });
+
+    Mentions::with_user_ids(user_ids)
 }
 
 fn cmd(open_command: &Vec<String>) -> Option<Command> {
