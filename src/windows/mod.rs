@@ -9,7 +9,6 @@
 
 use std::cmp::Ord;
 use std::fmt::{self};
-use crate::config::TunableValues;
 
 use feruca::Collator;
 use matrix_sdk::room::RoomMember;
