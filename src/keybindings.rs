@@ -19,11 +19,11 @@ fn once(key: &TerminalKey) -> (EdgeRepeat, EdgeEvent<TerminalKey, CommonKeyClass
 }
 
 /// Initialize the default keybinding state.
-pub fn setup_keybindings() -> Keybindings {
+pub fn setup_keybindings(tunables: &TunableValues) -> Keybindings {
     let mut ism = Keybindings::empty();
 
     let vim = VimBindings::default()
-        .submit_on_enter()
+        .submit_on_enter(!tunables.send_on_enter)
         .cursor_open(MATRIX_ID_WORD.clone());
 
     vim.setup(&mut ism);

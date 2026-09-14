@@ -1711,6 +1711,7 @@ pub struct TunableValues {
     pub ssl_verify: bool,
     pub cache_policy: MediaRetentionPolicy,
     pub colors: ColorschemeValues,
+    pub send_on_enter: bool,
 }
 
 impl TunableValues {
@@ -1828,6 +1829,7 @@ pub struct Tunables {
     #[serde(default)]
     pub colors: Colorscheme,
     pub cache_policy: Option<MediaRetentionPolicy>,
+    pub send_on_enter: Option<bool>,
 }
 
 impl Tunables {
@@ -1883,6 +1885,7 @@ impl Tunables {
             ssl_verify: self.ssl_verify.or(other.ssl_verify),
             cache_policy: self.cache_policy.or(other.cache_policy),
             colors: self.colors.merge(other.colors),
+            send_on_enter: self.send_on_enter.or(other.send_on_enter),
         }
     }
 
@@ -1930,6 +1933,7 @@ impl Tunables {
             ssl_verify: self.ssl_verify.unwrap_or(true),
             cache_policy: self.cache_policy.unwrap_or_default(),
             colors: self.colors.values(),
+            send_on_enter: self.send_on_enter.unwrap_or_default(),
         }
     }
 }

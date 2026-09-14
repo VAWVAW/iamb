@@ -1652,7 +1652,7 @@ dependencies = [
 [[package]]
 name = "editor-types"
 version = "0.0.4"
-source = "git+https://github.com/vawvaw/modalkit?rev=9cafaf50408d856687ca4039f6b10b923dfe975c#9cafaf50408d856687ca4039f6b10b923dfe975c"
+source = "git+https://github.com/vawvaw/modalkit?rev=a239c924fb7ea5dcaf0be705b22d436975afdb19#a239c924fb7ea5dcaf0be705b22d436975afdb19"
 dependencies = [
  "bitflags 2.13.0",
  "editor-types-macros",
@@ -1663,7 +1663,7 @@ dependencies = [
 [[package]]
 name = "editor-types-macros"
 version = "0.0.4"
-source = "git+https://github.com/vawvaw/modalkit?rev=9cafaf50408d856687ca4039f6b10b923dfe975c#9cafaf50408d856687ca4039f6b10b923dfe975c"
+source = "git+https://github.com/vawvaw/modalkit?rev=a239c924fb7ea5dcaf0be705b22d436975afdb19#a239c924fb7ea5dcaf0be705b22d436975afdb19"
 dependencies = [
  "editor-types-parser",
  "nom 8.0.0",
@@ -1675,7 +1675,7 @@ dependencies = [
 [[package]]
 name = "editor-types-parser"
 version = "0.0.4"
-source = "git+https://github.com/vawvaw/modalkit?rev=9cafaf50408d856687ca4039f6b10b923dfe975c#9cafaf50408d856687ca4039f6b10b923dfe975c"
+source = "git+https://github.com/vawvaw/modalkit?rev=a239c924fb7ea5dcaf0be705b22d436975afdb19#a239c924fb7ea5dcaf0be705b22d436975afdb19"
 dependencies = [
  "nom 8.0.0",
  "thiserror 2.0.18",
@@ -3025,7 +3025,7 @@ dependencies = [
 [[package]]
 name = "keybindings"
 version = "0.0.4"
-source = "git+https://github.com/vawvaw/modalkit?rev=9cafaf50408d856687ca4039f6b10b923dfe975c#9cafaf50408d856687ca4039f6b10b923dfe975c"
+source = "git+https://github.com/vawvaw/modalkit?rev=a239c924fb7ea5dcaf0be705b22d436975afdb19#a239c924fb7ea5dcaf0be705b22d436975afdb19"
 dependencies = [
  "textwrap",
  "unicode-segmentation",
@@ -3713,7 +3713,7 @@ dependencies = [
 [[package]]
 name = "modalkit"
 version = "0.0.27"
-source = "git+https://github.com/vawvaw/modalkit?rev=9cafaf50408d856687ca4039f6b10b923dfe975c#9cafaf50408d856687ca4039f6b10b923dfe975c"
+source = "git+https://github.com/vawvaw/modalkit?rev=a239c924fb7ea5dcaf0be705b22d436975afdb19#a239c924fb7ea5dcaf0be705b22d436975afdb19"
 dependencies = [
  "anymap2",
  "arboard",
@@ -3736,7 +3736,7 @@ dependencies = [
 [[package]]
 name = "modalkit-ratatui"
 version = "0.0.27"
-source = "git+https://github.com/vawvaw/modalkit?rev=9cafaf50408d856687ca4039f6b10b923dfe975c#9cafaf50408d856687ca4039f6b10b923dfe975c"
+source = "git+https://github.com/vawvaw/modalkit?rev=a239c924fb7ea5dcaf0be705b22d436975afdb19#a239c924fb7ea5dcaf0be705b22d436975afdb19"
 dependencies = [
  "crossterm 0.29.0",
  "intervaltree",

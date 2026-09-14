@@ -88,12 +88,12 @@ optional = true
 version = "0.0.27"
 default-features = false
 git = "https://github.com/vawvaw/modalkit"
-rev = "9cafaf50408d856687ca4039f6b10b923dfe975c"
+rev = "a239c924fb7ea5dcaf0be705b22d436975afdb19"
 
 [dependencies.modalkit-ratatui]
 version = "0.0.27"
 git = "https://github.com/vawvaw/modalkit"
-rev = "9cafaf50408d856687ca4039f6b10b923dfe975c"
+rev = "a239c924fb7ea5dcaf0be705b22d436975afdb19"
 
 [dependencies.matrix-sdk-base]
 version = "0.18.0"
