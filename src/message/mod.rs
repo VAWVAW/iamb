@@ -4,11 +4,12 @@ use std::cmp::{Ord, PartialOrd};
 use std::collections::hash_map::DefaultHasher;
 use std::convert::TryInto;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use chrono::{DateTime, Local as LocalTz};
 use humansize::{DECIMAL, format_size};
-use matrix_sdk::ruma::OwnedTransactionId;
 use matrix_sdk::ruma::UInt;
+use matrix_sdk::ruma::events::Mentions;
 use matrix_sdk::ruma::events::RedactedUnsigned;
 use matrix_sdk::ruma::events::poll::start::RedactedPollStartEvent;
 use matrix_sdk::ruma::events::poll::unstable_start::RedactedUnstablePollStartEvent;
@@ -27,6 +28,7 @@ use matrix_sdk::ruma::events::room::message::{
 use matrix_sdk::ruma::events::room::redaction::SyncRoomRedactionEvent;
 use matrix_sdk::ruma::events::sticker::{OriginalStickerEvent, RedactedStickerEvent, StickerEvent};
 use matrix_sdk::ruma::events::{AnyRedactionEvent, MessageLikeEvent};
+use matrix_sdk::ruma::{OwnedTransactionId, UserId};
 use matrix_sdk::send_queue::SendHandle;
 use modalkit::editing::cursor::Cursor;
 use ratatui::symbols::line::{HORIZONTAL, THICK_VERTICAL};
@@ -50,7 +52,7 @@ pub mod poll;
 pub use self::compose::{text_to_message, text_to_text_message_event_content};
 pub use self::html::TreeGenState;
 
-type ProtocolPreview<'a> = (&'a SlicedProtocol, u16, u16);
+type ProtocolPreview = (Arc<SlicedProtocol>, u16, u16);
 
 /// The key used for uniquely identifying messages within a room and its threads.
 ///
@@ -122,7 +124,7 @@ const READ_GUTTER: usize = 5;
 const MIN_MSG_LEN: usize = 30;
 
 const TIME_GUTTER_EMPTY: &str = "            ";
-const TIME_GUTTER_EMPTY_SPAN: Span<'static> = span_static(TIME_GUTTER_EMPTY);
+pub const TIME_GUTTER_EMPTY_SPAN: Span<'static> = span_static(TIME_GUTTER_EMPTY);
 
 const USIZE_TOO_SMALL: bool = usize::BITS < u64::BITS;
 
@@ -188,9 +190,24 @@ impl MessageId {
     }
 }
 
+impl Display for MessageId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MessageId::Origin(id) => write!(f, "{}", id),
+            MessageId::Local(id) => write!(f, "{}", id),
+        }
+    }
+}
+
 impl From<OwnedEventId> for MessageId {
     fn from(value: OwnedEventId) -> Self {
         Self::Origin(value)
+    }
+}
+
+impl From<OwnedTransactionId> for MessageId {
+    fn from(value: OwnedTransactionId) -> Self {
+        Self::Local(value)
     }
 }
 
@@ -207,7 +224,7 @@ pub enum TimeStampIntError {
 pub struct MessageTimeStamp(pub MilliSecondsSinceUnixEpoch);
 
 impl MessageTimeStamp {
-    fn as_datetime(self) -> DateTime<LocalTz> {
+    pub fn as_datetime(self) -> DateTime<LocalTz> {
         let time = i64::from(self.0.0) / 1000;
         let time = DateTime::from_timestamp(time, 0).unwrap_or_default();
         time.into()
@@ -220,10 +237,10 @@ impl MessageTimeStamp {
         dt1.date_naive() == dt2.date_naive()
     }
 
-    fn show_date(self, settings: &ApplicationSettings) -> Span<'static> {
+    fn show_date(self, tunables: &TunableValues) -> Span<'static> {
         let time = self.as_datetime().format("%A, %B %d %Y").to_string();
 
-        Span::styled(time, settings.tunables.colors.message_date.add_modifier(StyleModifier::BOLD))
+        Span::styled(time, tunables.colors.message_date.add_modifier(StyleModifier::BOLD))
     }
 
     /// A compact date and time, for places without a date separator line.
@@ -231,11 +248,11 @@ impl MessageTimeStamp {
         self.as_datetime().format("%Y-%m-%d %H:%M").to_string()
     }
 
-    fn show_time(self, settings: &ApplicationSettings) -> Span<'static> {
+    fn show_time(self, tunables: &TunableValues) -> Span<'static> {
         let time = self.as_datetime().format("%T");
         let time = format!("  [{time}]");
 
-        Span::styled(time, settings.tunables.colors.message_time)
+        Span::styled(time, tunables.colors.message_time)
     }
 }
 
@@ -484,18 +501,18 @@ impl MessageEvent {
         self.msgtype().and_then(content_filename)
     }
 
-    fn message_style(&self, settings: &ApplicationSettings) -> Style {
+    fn message_style(&self, tunables: &TunableValues) -> Style {
         let content = match self {
             MessageEvent::EncryptedOriginal(_) | MessageEvent::EncryptedRedacted(_) => {
-                return settings.tunables.colors.message_other;
+                return tunables.colors.message_other;
             },
-            MessageEvent::Redacted(..) => return settings.tunables.colors.message_redacted,
-            MessageEvent::State(_) => return settings.tunables.colors.message_state,
+            MessageEvent::Redacted(..) => return tunables.colors.message_redacted,
+            MessageEvent::State(_) => return tunables.colors.message_state,
             MessageEvent::Original(ev, _) => &ev.content,
             MessageEvent::Local(_, _, content) => content,
-            MessageEvent::Sticker(..) => return settings.tunables.colors.message_sticker,
+            MessageEvent::Sticker(..) => return tunables.colors.message_sticker,
             MessageEvent::Poll(..) | MessageEvent::UnstablePoll(..) => {
-                return settings.tunables.colors.message_poll;
+                return tunables.colors.message_poll;
             },
         };
 
@@ -505,11 +522,28 @@ impl MessageEvent {
             MessageType::Emote(_) |
             MessageType::File(_) |
             MessageType::Image(_) |
-            MessageType::Video(_) => settings.tunables.colors.message_normal,
-            MessageType::Notice(_) | MessageType::ServerNotice(_) => {
-                settings.tunables.colors.message_notice
+            MessageType::Video(_) => tunables.colors.message_normal,
+            MessageType::Notice(_) | MessageType::ServerNotice(_) => tunables.colors.message_notice,
+            _ => tunables.colors.message_other,
+        }
+    }
+
+    pub fn mentions(&self) -> Option<&Mentions> {
+        match self {
+            MessageEvent::EncryptedOriginal(..) |
+            MessageEvent::EncryptedRedacted(..) |
+            MessageEvent::Redacted(..) |
+            MessageEvent::Sticker(..) |
+            MessageEvent::Poll(..) |
+            MessageEvent::UnstablePoll(..) |
+            MessageEvent::State(..) => None,
+            MessageEvent::Original(ev, edits) => {
+                edits
+                    .last_key_value()
+                    .and_then(|(_, ev)| ev.mentions.as_ref())
+                    .or(ev.content.mentions.as_ref())
             },
-            _ => settings.tunables.colors.message_other,
+            MessageEvent::Local(_, _, ev) => ev.mentions.as_ref(),
         }
     }
 
@@ -669,11 +703,11 @@ enum MessageColumns {
 }
 
 impl MessageColumns {
-    fn user_gutter_width(&self, settings: &ApplicationSettings) -> u16 {
+    fn user_gutter_width(&self, tunables: &TunableValues) -> u16 {
         if let MessageColumns::One = self {
             2
         } else {
-            settings.tunables.user_gutter_width as u16
+            tunables.user_gutter_width as u16
         }
     }
 }
@@ -693,7 +727,7 @@ enum SenderSpan<'a> {
 }
 
 struct MessageFormatter<'a> {
-    settings: &'a ApplicationSettings,
+    tunables: &'a TunableValues,
     info: &'a RoomInfo,
 
     /// How many columns to print.
@@ -761,8 +795,7 @@ impl<'a> MessageFormatter<'a> {
             text.lines.push(Line::from(vec![leading, date, trailing]));
         }
 
-        let user_gutter_empty_span =
-            space_span(self.settings.tunables.user_gutter_width, Style::default());
+        let user_gutter_empty_span = space_span(self.tunables.user_gutter_width, Style::default());
 
         let user_gutter = match std::mem::take(&mut self.user) {
             SenderSpan::Line(user) => {
@@ -775,7 +808,7 @@ impl<'a> MessageFormatter<'a> {
 
         match self.cols {
             MessageColumns::Four => {
-                let settings = self.settings;
+                let tunables = self.tunables;
                 let time = self.time.take().unwrap_or(TIME_GUTTER_EMPTY_SPAN);
 
                 let mut line = vec![user_gutter];
@@ -783,7 +816,7 @@ impl<'a> MessageFormatter<'a> {
                 line.push(time);
 
                 // Show read receipts.
-                let user_char = |user: OwnedUserId| -> Span { settings.get_user_char_span(&user) };
+                let user_char = |user: OwnedUserId| -> Span { tunables.get_user_char_span(&user) };
 
                 let a = self.read.pop().map(user_char).unwrap_or_else(|| Span::raw(" "));
                 let b = self.read.pop().map(user_char).unwrap_or_else(|| Span::raw(" "));
@@ -834,19 +867,19 @@ impl<'a> MessageFormatter<'a> {
         style: Style,
         text: &mut Text<'a>,
         info: &'a RoomInfo,
-        settings: &'a ApplicationSettings,
+        tunables: &'a TunableValues,
         previews: &'a PreviewManager,
-    ) -> Option<ProtocolPreview<'a>> {
-        let reply_style = if settings.tunables.message_user_color {
-            style.patch(settings.get_user_color(&msg.sender))
+    ) -> Option<ProtocolPreview> {
+        let reply_style = if tunables.message_user_color {
+            style.patch(tunables.get_user_color(&msg.sender))
         } else {
-            style.patch(msg.event.message_style(settings))
+            style.patch(msg.event.message_style(tunables))
         };
 
         let width = self.width();
         let w = width.saturating_sub(2);
-        let (mut replied, proto) = msg.show_msg(w, reply_style, settings, previews, info);
-        let mut sender = msg.sender_span(info, self.settings);
+        let (mut replied, proto) = msg.show_msg(w, reply_style, tunables, previews, info);
+        let mut sender = msg.sender_span(info, self.tunables);
         let sender_width = UnicodeWidthStr::width(sender.content.as_ref());
         let trailing = w.saturating_sub(sender_width + 1);
 
@@ -868,7 +901,7 @@ impl<'a> MessageFormatter<'a> {
         let proto = proto.map(|p| {
             let y_off = text.lines.len() as u16;
             // Adjust x_off by 2 to account for the vertical line and indent
-            let x_off = self.cols.user_gutter_width(settings) + 2;
+            let x_off = self.cols.user_gutter_width(tunables) + 2;
             (p, x_off, y_off)
         });
 
@@ -884,13 +917,13 @@ impl<'a> MessageFormatter<'a> {
 
     fn push_reactions(
         &mut self,
-        counts: Vec<(&'a str, usize, &'a Option<MediaSource>)>,
+        counts: Vec<(&'a str, Vec<&'a UserId>, &'a Option<MediaSource>)>,
         style: Style,
         text: &mut Text<'a>,
-        settings: &ApplicationSettings,
+        tunables: &'a TunableValues,
         previews: &'a PreviewManager,
-    ) -> Vec<ProtocolPreview<'a>> {
-        let mut emojis = printer::TextPrinter::new(self.width(), style, self.settings, self.info);
+    ) -> Vec<ProtocolPreview> {
+        let mut emojis = printer::TextPrinter::new(self.width(), style, self.tunables, self.info);
         let mut reactions = 0;
         let mut protos = Vec::new();
 
@@ -912,7 +945,7 @@ impl<'a> MessageFormatter<'a> {
 
             let name = if proto.is_some() {
                 "  "
-            } else if self.settings.tunables.reaction_shortcode_display {
+            } else if self.tunables.reaction_shortcode_display {
                 if let Some(emoji) = emojis::get(key) {
                     if let Some(short) = emoji.shortcode() {
                         short
@@ -932,15 +965,17 @@ impl<'a> MessageFormatter<'a> {
 
             emojis.push_str("[", style);
             if let Some(Some(proto)) = proto {
+                let proto = Arc::clone(proto);
+
                 let (x, y) = emojis.cursor_pos();
                 let y = (y + text.lines.len()) as u16;
-                let x = x as u16 + self.cols.user_gutter_width(settings);
+                let x = x as u16 + self.cols.user_gutter_width(tunables);
 
                 protos.push((proto, x, y));
             }
             emojis.push_str(name, style);
             emojis.push_str(" ", style);
-            emojis.push_span_nobreak(Span::styled(count.to_string(), style));
+            emojis.push_span_nobreak(Span::styled(count.len().to_string(), style));
             emojis.push_str("]", style);
 
             reactions += 1;
@@ -961,7 +996,7 @@ impl<'a> MessageFormatter<'a> {
         // If we have threaded replies to this message, show how many.
         let plural = len != 1;
         let mut threaded =
-            printer::TextPrinter::new(self.width(), style, self.settings, self.info).literal(true);
+            printer::TextPrinter::new(self.width(), style, self.tunables, self.info).literal(true);
         let len = Span::styled(len.to_string(), style.add_modifier(StyleModifier::BOLD));
         threaded.push_str(" \u{2937} ", style);
         threaded.push_span_nobreak(len);
@@ -1074,8 +1109,8 @@ impl Message {
         }
     }
 
-    fn get_render_style(&self, selected: bool, settings: &ApplicationSettings) -> Style {
-        let mut style = self.event.message_style(settings);
+    fn get_render_style(&self, selected: bool, tunables: &TunableValues) -> Style {
+        let mut style = self.event.message_style(tunables);
 
         if selected {
             style = style.add_modifier(StyleModifier::REVERSED)
@@ -1085,8 +1120,8 @@ impl Message {
             style = style.add_modifier(StyleModifier::ITALIC);
         }
 
-        if settings.tunables.message_user_color {
-            let color = settings.get_user_color(&self.sender);
+        if tunables.message_user_color {
+            let color = tunables.get_user_color(&self.sender);
             style = style.fg(color);
         }
 
@@ -1107,12 +1142,12 @@ impl Message {
         &self,
         prev: Option<&Message>,
         info: &RoomInfo,
-        settings: &ApplicationSettings,
+        own_user_id: &UserId,
     ) -> bool {
         let marker = info
             .user_receipts
             .get(&self.receipt_thread(info))
-            .and_then(|receipts| receipts.get(&settings.profile.user_id));
+            .and_then(|receipts| receipts.get(own_user_id));
 
         is_after_read_marker(prev, marker)
     }
@@ -1127,15 +1162,21 @@ impl Message {
 
     pub fn message_column_width(
         viewctx: &ViewportContext<MessageCursor>,
-        settings: &ApplicationSettings,
+        tunables: &TunableValues,
     ) -> usize {
         let width = viewctx.get_width();
-        let user_gutter = settings.tunables.user_gutter_width;
+        let user_gutter = tunables.user_gutter_width;
 
         if user_gutter + TIME_GUTTER + READ_GUTTER + MIN_MSG_LEN <= width &&
-            settings.tunables.read_receipt_display
+            tunables.read_receipt_display &&
+            tunables.message_time_display
         {
             width - user_gutter - TIME_GUTTER - READ_GUTTER
+        } else if user_gutter + READ_GUTTER + MIN_MSG_LEN <= width &&
+            tunables.read_receipt_display &&
+            !tunables.message_time_display
+        {
+            width - user_gutter - READ_GUTTER
         } else if user_gutter + TIME_GUTTER + MIN_MSG_LEN <= width {
             width - user_gutter - TIME_GUTTER
         } else if user_gutter + MIN_MSG_LEN <= width {
@@ -1150,20 +1191,22 @@ impl Message {
         prev: Option<&Message>,
         width: usize,
         info: &'a RoomInfo,
-        settings: &'a ApplicationSettings,
+        tunables: &'a TunableValues,
+        own_user_id: &'a UserId,
     ) -> MessageFormatter<'a> {
         let orig = width;
-        let date = self.show_date(prev).then(|| self.timestamp.show_date(settings));
-        let trackbar = self.show_trackbar(prev, info, settings);
-        let user_gutter = settings.tunables.user_gutter_width;
+        let date = self.show_date(prev).then(|| self.timestamp.show_date(tunables));
+        let trackbar = self.show_trackbar(prev, info, own_user_id);
+        let user_gutter = tunables.user_gutter_width;
 
         if user_gutter + TIME_GUTTER + READ_GUTTER + MIN_MSG_LEN <= width &&
-            settings.tunables.read_receipt_display
+            tunables.read_receipt_display &&
+            tunables.message_time_display
         {
             let cols = MessageColumns::Four;
             let fill = width - user_gutter - TIME_GUTTER - READ_GUTTER;
-            let user = self.show_sender(prev, true, info, settings, width);
-            let time = Some(self.timestamp.show_time(settings));
+            let user = self.show_sender(prev, true, info, tunables, width);
+            let time = Some(self.timestamp.show_time(tunables));
 
             let read = self
                 .event
@@ -1181,7 +1224,7 @@ impl Message {
                 .unwrap_or_default();
 
             MessageFormatter {
-                settings,
+                tunables,
                 cols,
                 orig,
                 fill,
@@ -1192,15 +1235,44 @@ impl Message {
                 read,
                 info,
             }
-        } else if user_gutter + TIME_GUTTER + MIN_MSG_LEN <= width {
+        } else if user_gutter + READ_GUTTER + MIN_MSG_LEN <= width &&
+            tunables.read_receipt_display &&
+            !tunables.message_time_display
+        {
+            let cols = MessageColumns::Three;
+            let fill = width - user_gutter - READ_GUTTER;
+            let user = self.show_sender(prev, true, info, tunables, width);
+            let time = None;
+            let read = info
+                .event_receipts
+                .values()
+                .filter_map(|receipts| self.event.event_id().and_then(|id| receipts.get(id)))
+                .flat_map(|read| read.iter())
+                .map(|user_id| user_id.to_owned())
+                .collect();
+
+            MessageFormatter {
+                tunables,
+                cols,
+                orig,
+                fill,
+                user,
+                date,
+                trackbar,
+                time,
+                read,
+                info,
+            }
+        } else if user_gutter + TIME_GUTTER + MIN_MSG_LEN <= width && tunables.message_time_display
+        {
             let cols = MessageColumns::Three;
             let fill = width - user_gutter - TIME_GUTTER;
-            let user = self.show_sender(prev, true, info, settings, width);
-            let time = Some(self.timestamp.show_time(settings));
+            let user = self.show_sender(prev, true, info, tunables, width);
+            let time = Some(self.timestamp.show_time(tunables));
             let read = Vec::new();
 
             MessageFormatter {
-                settings,
+                tunables,
                 cols,
                 orig,
                 fill,
@@ -1214,12 +1286,12 @@ impl Message {
         } else if user_gutter + MIN_MSG_LEN <= width {
             let cols = MessageColumns::Two;
             let fill = width - user_gutter;
-            let user = self.show_sender(prev, true, info, settings, width);
+            let user = self.show_sender(prev, true, info, tunables, width);
             let time = None;
             let read = Vec::new();
 
             MessageFormatter {
-                settings,
+                tunables,
                 cols,
                 orig,
                 fill,
@@ -1233,12 +1305,12 @@ impl Message {
         } else {
             let cols = MessageColumns::One;
             let fill = width.saturating_sub(2);
-            let user = self.show_sender(prev, false, info, settings, width);
+            let user = self.show_sender(prev, false, info, tunables, width);
             let time = None;
             let read = Vec::new();
 
             MessageFormatter {
-                settings,
+                tunables,
                 cols,
                 orig,
                 fill,
@@ -1255,19 +1327,19 @@ impl Message {
     /// Render the message as a [Text] object for the terminal.
     ///
     /// This will also get the image preview Protocol with an x/y offset.
+    #[expect(clippy::too_many_arguments)]
     pub fn show_with_preview<'a>(
         &'a self,
         prev: Option<&Message>,
         selected: bool,
-        vwctx: &ViewportContext<MessageCursor>,
+        width: usize,
         info: &'a RoomInfo,
-        settings: &'a ApplicationSettings,
+        tunables: &'a TunableValues,
         previews: &'a PreviewManager,
-    ) -> (Text<'a>, Vec<ProtocolPreview<'a>>) {
-        let width = vwctx.get_width();
-
-        let style = self.get_render_style(selected, settings);
-        let mut fmt = self.get_render_format(prev, width, info, settings);
+        own_user_id: &'a UserId,
+    ) -> (Text<'a>, Vec<ProtocolPreview>) {
+        let style = self.get_render_style(selected, tunables);
+        let mut fmt = self.get_render_format(prev, width, info, tunables, own_user_id);
         let mut text = Text::default();
         let width = fmt.width();
 
@@ -1278,7 +1350,7 @@ impl Message {
         if let Some(r) = reply {
             if let Some(r) = r {
                 // Format the reply header, push it into the `Text` buffer, and get any image.
-                let proto_reply = fmt.push_in_reply(r, style, &mut text, info, settings, previews);
+                let proto_reply = fmt.push_in_reply(r, style, &mut text, info, tunables, previews);
                 if let Some(proto) = proto_reply {
                     protos.push(proto)
                 }
@@ -1297,12 +1369,12 @@ impl Message {
         }
 
         // Now show the message contents, and the inlined reply if we couldn't find it above.
-        let (msg, proto) = self.show_msg(width, style, settings, previews, info);
+        let (msg, proto) = self.show_msg(width, style, tunables, previews, info);
 
         // Given our text so far, determine the image offset.
         if let Some(p) = proto {
             let y_off = text.lines.len() as u16;
-            let x_off = fmt.cols.user_gutter_width(settings);
+            let x_off = fmt.cols.user_gutter_width(tunables);
 
             // Account for extra lines printed before the message;
             let y_off = y_off + fmt.message_start_line();
@@ -1335,10 +1407,10 @@ impl Message {
             );
         }
 
-        if settings.tunables.reaction_display {
+        if tunables.reaction_display {
             let reactions =
                 self.event.event_id().map(|id| info.get_reactions(id)).unwrap_or_default();
-            let react_protos = fmt.push_reactions(reactions, style, &mut text, settings, previews);
+            let react_protos = fmt.push_reactions(reactions, style, &mut text, tunables, previews);
             protos.extend(react_protos);
         }
 
@@ -1349,26 +1421,29 @@ impl Message {
         (text, protos)
     }
 
+    #[expect(clippy::too_many_arguments)]
     pub fn show<'a>(
         &'a self,
         prev: Option<&Message>,
         selected: bool,
-        vwctx: &ViewportContext<MessageCursor>,
+        width: usize,
         info: &'a RoomInfo,
-        settings: &'a ApplicationSettings,
+        tunables: &'a TunableValues,
         previews: &'a PreviewManager,
+        own_user_id: &'a UserId,
     ) -> Text<'a> {
-        self.show_with_preview(prev, selected, vwctx, info, settings, previews).0
+        self.show_with_preview(prev, selected, width, info, tunables, previews, own_user_id)
+            .0
     }
 
     fn show_msg<'a>(
         &'a self,
         width: usize,
         style: Style,
-        settings: &'a ApplicationSettings,
+        tunables: &'a TunableValues,
         previews: &'a PreviewManager,
         info: &'a RoomInfo,
-    ) -> (Text<'a>, Option<&'a SlicedProtocol>) {
+    ) -> (Text<'a>, Option<Arc<SlicedProtocol>>) {
         let mut proto = None;
         let placeholder = match self
             .image_preview()
@@ -1382,7 +1457,7 @@ impl Message {
                 placeholder_frame(Some("Downloading..."), width, image_preview_size)
             },
             Some(ImageStatus::Loaded(backend)) => {
-                proto = Some(backend);
+                proto = Some(Arc::clone(backend));
                 placeholder_frame(None, width, &backend.size())
             },
             Some(ImageStatus::Error(err)) => Some(format!("[Image error: {err}]\n")),
@@ -1403,10 +1478,10 @@ impl Message {
         }
 
         if let Some(html) = &self.html {
-            text += html.to_text(width, style, settings, info);
+            text += html.to_text(width, style, tunables, info);
         } else {
             let mut msg = self.event.body();
-            if settings.tunables.message_shortcode_display {
+            if tunables.message_shortcode_display {
                 msg = Cow::Owned(replace_emojis_in_str(msg.as_ref()));
             }
             text += wrapped_text(msg, width, style);
@@ -1415,12 +1490,8 @@ impl Message {
         (text, proto)
     }
 
-    fn sender_span<'a>(
-        &'a self,
-        info: &'a RoomInfo,
-        settings: &'a ApplicationSettings,
-    ) -> Span<'a> {
-        settings.get_user_span(self.sender.as_ref(), info)
+    fn sender_span<'a>(&'a self, info: &'a RoomInfo, tunables: &'a TunableValues) -> Span<'a> {
+        tunables.get_user_span(self.sender.as_ref(), info)
     }
 
     fn show_sender<'a>(
@@ -1428,7 +1499,7 @@ impl Message {
         prev: Option<&Message>,
         gutter_enabled: bool,
         info: &'a RoomInfo,
-        settings: &'a ApplicationSettings,
+        tunables: &'a TunableValues,
         width: usize,
     ) -> SenderSpan<'a> {
         if let Some(prev) = prev &&
@@ -1439,8 +1510,8 @@ impl Message {
             return SenderSpan::None;
         }
 
-        let Span { content, style } = self.sender_span(info, settings);
-        let user_gutter = settings.tunables.user_gutter_width;
+        let Span { content, style } = self.sender_span(info, tunables);
+        let user_gutter = tunables.user_gutter_width;
 
         let show_in_gutter = gutter_enabled && user_gutter > 2;
 
@@ -1974,19 +2045,21 @@ pub mod tests {
         let settings = mock_settings();
         let previews = PreviewManager::new(&settings);
         let mut info = mock_room();
-        let vwctx = ViewportContext { dimensions: (60, 5), ..Default::default() };
+        let width = 60;
 
         let prev = mock_message1();
         let msg = mock_message2();
         let user_id = settings.profile.user_id.clone();
 
         // Without a marker, no trackbar is drawn.
-        let text = msg.show(Some(&prev), false, &vwctx, &info, &settings, &previews);
+        let text =
+            msg.show(Some(&prev), false, width, &info, &settings.tunables, &previews, &user_id);
         assert!(!has_trackbar(&text, 60));
 
         // When the marker names the previous message, the rule leads the message.
         info.set_receipt(ReceiptThread::Main, user_id.clone(), MSG1_EVID.clone());
-        let text = msg.show(Some(&prev), false, &vwctx, &info, &settings, &previews);
+        let text =
+            msg.show(Some(&prev), false, width, &info, &settings.tunables, &previews, &user_id);
         assert!(has_trackbar(&text, 60));
         assert_eq!(text.lines[0].spans[0].content.as_ref(), HORIZONTAL.repeat(60));
 
@@ -1994,9 +2067,11 @@ pub mod tests {
         // already positioned on the rendered message, not moving an existing marker backwards.
         let mut info = mock_room();
         info.set_receipt(ReceiptThread::Main, user_id.clone(), MSG2_EVID.clone());
-        let text = msg.show(Some(&prev), false, &vwctx, &info, &settings, &previews);
+        let text =
+            msg.show(Some(&prev), false, width, &info, &settings.tunables, &previews, &user_id);
         assert!(!has_trackbar(&text, 60));
-        let text = prev.show(Some(&msg), false, &vwctx, &info, &settings, &previews);
+        let text =
+            prev.show(Some(&msg), false, width, &info, &settings.tunables, &previews, &user_id);
         assert!(has_trackbar(&text, 60));
     }
 
@@ -2017,11 +2092,11 @@ pub mod tests {
 
         // A marker for the thread that this message belongs to is shown.
         info.set_receipt(ReceiptThread::Thread(root.clone()), user_id.clone(), MSG1_EVID.clone());
-        assert!(msg.show_trackbar(Some(&prev), &info, &settings));
+        assert!(msg.show_trackbar(Some(&prev), &info, &user_id));
 
         // The main timeline's marker doesn't apply to a thread's messages.
         info.user_receipts.remove(&ReceiptThread::Thread(root));
-        info.set_receipt(ReceiptThread::Main, user_id, MSG1_EVID.clone());
-        assert!(!msg.show_trackbar(Some(&prev), &info, &settings));
+        info.set_receipt(ReceiptThread::Main, user_id.clone(), MSG1_EVID.clone());
+        assert!(!msg.show_trackbar(Some(&prev), &info, &user_id));
     }
 }
