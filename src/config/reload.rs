@@ -18,8 +18,6 @@ use crate::config::{
     EncryptionIndicatorLocationVisitor,
     NotifyVia,
     NotifyViaVisitor,
-    UserColor,
-    UserColorVisitor,
     parse_env_logger,
 };
 use crate::config::{
@@ -88,6 +86,9 @@ pub enum TunablesUpdateError {
 
     #[error(transparent)]
     ParseInt(#[from] std::num::ParseIntError),
+
+    #[error(transparent)]
+    ParseColor(#[from] ratatui::style::ParseColorError),
 
     #[error("Invalid user id: {0}")]
     UserId(#[from] matrix_sdk::IdParseError),
@@ -199,7 +200,7 @@ impl NotificationsUpdate {
 #[strum_discriminants(derive(IntoStaticStr, VariantArray))]
 pub enum UserDisplayUpdate {
     Name(Option<String>),
-    Color(Option<UserColor>),
+    Color(Option<Color>),
 }
 
 impl UserDisplayUpdate {
@@ -216,7 +217,7 @@ impl UserDisplayUpdate {
                 if value.is_empty() {
                     Self::Color(None)
                 } else {
-                    let color = UserColorVisitor.visit_str::<TunablesUpdateError>(value)?;
+                    let color = Color::from_str(value)?;
                     Self::Color(Some(color))
                 }
             },
