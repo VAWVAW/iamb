@@ -882,6 +882,7 @@ pub struct TunableValues {
     pub read_receipt_trigger: ReadReceiptTrigger,
     pub read_receipt_display: bool,
     pub room_labels: Vec<RoomLabel>,
+    pub message_time_display: bool,
     pub request_timeout: u64,
     pub sort: SortValues,
     pub state_event_display: bool,
@@ -948,6 +949,7 @@ pub struct Tunables {
     pub sync_delay_ms: Option<u64>,
     pub typing_notice_send: Option<bool>,
     pub typing_notice_display: Option<bool>,
+    pub message_time_display: Option<bool>,
     pub username_display: Option<UserDisplayStyle>,
     pub message_user_color: Option<bool>,
     #[serde(default, deserialize_with = "deserialize_register")]
@@ -1001,6 +1003,7 @@ impl Tunables {
             read_receipt_trigger: self.read_receipt_trigger.or(other.read_receipt_trigger),
             read_receipt_display: self.read_receipt_display.or(other.read_receipt_display),
             room_labels: self.room_labels.or(other.room_labels),
+            message_time_display: self.message_time_display.or(other.message_time_display),
             request_timeout: self.request_timeout.or(other.request_timeout),
             state_event_display: self.state_event_display.or(other.state_event_display),
             sync_delay_ms: self.sync_delay_ms.or(other.sync_delay_ms),
@@ -1050,6 +1053,7 @@ impl Tunables {
             read_receipt_trigger: self.read_receipt_trigger.unwrap_or_default(),
             read_receipt_display: self.read_receipt_display.unwrap_or(true),
             room_labels: self.room_labels.unwrap_or_else(|| DEFAULT_ROOM_LABELS.to_vec()),
+            message_time_display: self.message_time_display.unwrap_or(true),
             request_timeout: self.request_timeout.unwrap_or(DEFAULT_REQ_TIMEOUT),
             state_event_display: self.state_event_display.unwrap_or(true),
             sync_delay_ms: self.sync_delay_ms.unwrap_or(DEFAULT_SYNC_FREQUENCY),
@@ -1607,7 +1611,11 @@ impl ApplicationSettings {
         self.theme.users.style(user_id.as_str(), color)
     }
 
-    pub fn get_user_span<'a>(&self, user_id: &'a UserId, info: &'a RoomInfo) -> Span<'a> {
+    pub fn get_user_span_maybe<'a>(
+        &self,
+        user_id: &'a UserId,
+        info: Option<&'a RoomInfo>,
+    ) -> Span<'a> {
         let (color, name) = self.get_user_overrides(user_id);
 
         let style = self.theme.users.style(user_id.as_str(), color);
@@ -1616,7 +1624,7 @@ impl ApplicationSettings {
             (None, UserDisplayStyle::Username) => Cow::Borrowed(user_id.as_str()),
             (None, UserDisplayStyle::LocalPart) => Cow::Borrowed(user_id.localpart()),
             (None, UserDisplayStyle::DisplayName) => {
-                if let Some(name) = info.display_names.get(user_id) {
+                if let Some(name) = info.and_then(|info| info.display_names.get(user_id)) {
                     name
                 } else {
                     Cow::Borrowed(user_id.as_str())
@@ -1625,6 +1633,10 @@ impl ApplicationSettings {
         };
 
         Span::styled(name, style)
+    }
+
+    pub fn get_user_span<'a>(&self, user_id: &'a UserId, info: &'a RoomInfo) -> Span<'a> {
+        self.get_user_span_maybe(user_id, Some(info))
     }
 }
 
