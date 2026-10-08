@@ -1558,7 +1558,11 @@ impl ApplicationSettings {
         self.theme.users.style(user_id.as_str(), color)
     }
 
-    pub fn get_user_span<'a>(&self, user_id: &'a UserId, info: &'a RoomInfo) -> Span<'a> {
+    pub fn get_user_span_maybe<'a>(
+        &self,
+        user_id: &'a UserId,
+        info: Option<&'a RoomInfo>,
+    ) -> Span<'a> {
         let (color, name) = self.get_user_overrides(user_id);
 
         let style = self.theme.users.style(user_id.as_str(), color);
@@ -1567,7 +1571,7 @@ impl ApplicationSettings {
             (None, UserDisplayStyle::Username) => Cow::Borrowed(user_id.as_str()),
             (None, UserDisplayStyle::LocalPart) => Cow::Borrowed(user_id.localpart()),
             (None, UserDisplayStyle::DisplayName) => {
-                if let Some(name) = info.display_names.get(user_id) {
+                if let Some(name) = info.and_then(|info| info.display_names.get(user_id)) {
                     name
                 } else {
                     Cow::Borrowed(user_id.as_str())
@@ -1576,6 +1580,10 @@ impl ApplicationSettings {
         };
 
         Span::styled(name, style)
+    }
+
+    pub fn get_user_span<'a>(&self, user_id: &'a UserId, info: &'a RoomInfo) -> Span<'a> {
+        self.get_user_span_maybe(user_id, Some(info))
     }
 }
 
