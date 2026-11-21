@@ -7,6 +7,10 @@ use tokio::sync::Semaphore;
 use crate::config::ImagePreviewValues;
 use crate::prelude::*;
 
+pub const AVATAR_WIDTH: u16 = 6;
+pub const AVATAR_HEIGHT: u16 = 3;
+pub const AVATAR_GAP: usize = 2;
+
 pub enum ImageStatus {
     Queued(Size),
     Downloading(Size),
@@ -42,7 +46,7 @@ impl PreviewKind {
     fn image_size(self, picker: &Picker, image_preview: &ImagePreviewValues) -> Size {
         match self {
             Self::Emoji => Size { width: 2, height: 1 },
-            Self::Avatar => Size { width: 4, height: 2 },
+            Self::Avatar => Size { width: AVATAR_WIDTH, height: AVATAR_HEIGHT },
             Self::Custom(width, height) => {
                 let font_size = picker.font_size();
 
@@ -155,6 +159,32 @@ fn picker_from_settings(settings: &ApplicationSettings) -> Picker {
     picker
 }
 
+/// Center-crop avatars to a square and mask them at their final pixel size.
+/// Keeping the mask in alpha lets image-capable terminals show their own background.
+fn circular_avatar(
+    image: image::DynamicImage,
+    diameter: u32,
+    filter: FilterType,
+) -> image::DynamicImage {
+    let side = image.width().min(image.height());
+    if side == 0 || diameter == 0 {
+        return image;
+    }
+    let mut pixels = image
+        .crop_imm((image.width() - side) / 2, (image.height() - side) / 2, side, side)
+        .resize_exact(diameter, diameter, filter)
+        .into_rgba8();
+    let radius = diameter as f32 / 2.0;
+    for (x, y, pixel) in pixels.enumerate_pixels_mut() {
+        let dx = x as f32 + 0.5 - radius;
+        let dy = y as f32 + 0.5 - radius;
+        // A one-pixel transition smooths the circular edge without losing existing alpha.
+        let coverage = (radius + 0.5 - dx.hypot(dy)).clamp(0.0, 1.0);
+        pixel[3] = (pixel[3] as f32 * coverage).round() as u8;
+    }
+    image::DynamicImage::ImageRgba8(pixels)
+}
+
 pub async fn load_image(
     store: AsyncProgramStore,
     media: Media,
@@ -199,6 +229,14 @@ pub async fn load_image(
 
         let handle = tokio::task::spawn_blocking(move || {
             let image = reader.decode().map_err(IambError::Image)?;
+            let image = if kind == PreviewKind::Avatar {
+                let font = picker.font_size();
+                let diameter = (u32::from(size.width) * u32::from(font.width))
+                    .min(u32::from(size.height) * u32::from(font.height));
+                circular_avatar(image, diameter, filter)
+            } else {
+                image
+            };
 
             SlicedProtocol::new_with_resize(&picker, image, size, Resize::Fit(Some(filter)))
                 .map_err(|err| IambError::Preview(err.to_string()))
@@ -229,4 +267,41 @@ pub async fn load_image(
 
     let mut locked = store.lock().await;
     locked.application.previews.insert(key, kind, status);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, Rgba, RgbaImage};
+
+    #[test]
+    fn circular_avatar_masks_corners_and_preserves_alpha() {
+        let input = DynamicImage::ImageRgba8(RgbaImage::from_pixel(32, 32, Rgba([20, 40, 60, 128])));
+        let output = circular_avatar(input, 32, FilterType::Triangle).into_rgba8();
+        assert_eq!(output.dimensions(), (32, 32));
+        for (x, y) in [(0, 0), (31, 0), (0, 31), (31, 31)] {
+            assert_eq!(output.get_pixel(x, y)[3], 0);
+        }
+        assert_eq!(*output.get_pixel(16, 16), Rgba([20, 40, 60, 128]));
+        assert!(output.pixels().any(|p| p[3] > 0 && p[3] < 128));
+    }
+
+    #[test]
+    fn circular_avatar_center_crops_rectangular_images() {
+        for (width, height) in [(60, 20), (20, 60)] {
+            let input = RgbaImage::from_fn(width, height, |x, y| {
+                if (width == 60 && (20..40).contains(&x)) ||
+                    (height == 60 && (20..40).contains(&y))
+                {
+                    Rgba([0, 255, 0, 255])
+                } else {
+                    Rgba([255, 0, 0, 255])
+                }
+            });
+            let output = circular_avatar(DynamicImage::ImageRgba8(input), 32, FilterType::Triangle)
+                .into_rgba8();
+            assert_eq!(output.dimensions(), (32, 32));
+            assert!(output.pixels().filter(|p| p[3] > 0).all(|p| p[0] == 0 && p[1] == 255));
+        }
+    }
 }

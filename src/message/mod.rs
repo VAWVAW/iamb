@@ -39,12 +39,11 @@ use crate::message::html::{StyleTree, parse_matrix_html};
 use crate::message::poll::{Poll, UnstablePoll};
 use crate::message::state::{body_cow_state, html_state};
 use crate::prelude::*;
-use crate::preview::ImageStatus;
+use crate::preview::{AVATAR_GAP, AVATAR_HEIGHT, AVATAR_WIDTH, ImageStatus};
 use crate::util::{
     replace_emojis_in_str,
     space,
     space_span,
-    take_width,
     take_width_grapheme,
     wrapped_text,
 };
@@ -730,14 +729,8 @@ enum SenderSpan<'a> {
     /// Show the sender name in an extra line at the top of the message.
     Line(Span<'a>),
 
-    /// Show the sender name in an extra line with an avatar placeholder in that line and the first
-    /// of the message.
-    AvatarLine {
-        /// This goes above the first message line.
-        line: Line<'a>,
-        /// This goes in the gutter of the first message line.
-        gutter: Span<'a>,
-    },
+    /// A separate avatar header, with the sender vertically centered beside the image.
+    AvatarLine { header: Text<'a> },
 
     /// The sender name has already been printed.
     #[default]
@@ -797,9 +790,11 @@ impl<'a> MessageFormatter<'a> {
             line += 1;
         }
 
-        if matches!(self.user, SenderSpan::Line(..) | SenderSpan::AvatarLine { .. }) {
-            line += 1;
-        }
+        line += match self.user {
+            SenderSpan::Line(..) => 1,
+            SenderSpan::AvatarLine { .. } => AVATAR_HEIGHT,
+            _ => 0,
+        };
 
         line
     }
@@ -831,9 +826,9 @@ impl<'a> MessageFormatter<'a> {
             },
             SenderSpan::Gutter(user) => user,
             SenderSpan::None => user_gutter_empty_span,
-            SenderSpan::AvatarLine { line, gutter } => {
-                text.lines.push(line);
-                gutter
+            SenderSpan::AvatarLine { header } => {
+                text.lines.extend(header.lines);
+                user_gutter_empty_span
             },
         };
 
@@ -1357,7 +1352,7 @@ impl Message {
                 .get(&self.sender)
                 .and_then(|source| previews.get(source, PreviewKind::Avatar))
         {
-            let y_off = u16::from(fmt.date.is_some());
+            let y_off = u16::from(fmt.date.is_some()) + u16::from(fmt.trackbar);
             protos.push((Arc::clone(proto), 0, y_off));
         }
 
@@ -1516,6 +1511,7 @@ impl Message {
         }
 
         let show_avatar = gutter_enabled &&
+            width > AVATAR_WIDTH as usize + AVATAR_GAP &&
             settings.tunables.image_preview.user_avatar &&
             match info
                 .avatars
@@ -1537,21 +1533,25 @@ impl Message {
             };
         }
 
-        let content = if UnicodeWidthStr::width(content.as_ref()) > width {
-            let ((truncated, _), _) = take_width(content, width);
-            truncated
-        } else {
-            content
-        };
-
-        let line = vec!["\u{230c}  \u{230d}".into(), Span::styled(content, style)].into();
-        let mut gutter: Cow<'_, _> = "\u{230e}  \u{230f}".into();
-
-        if user_gutter > 4 {
-            gutter.to_mut().push_str(&" ".repeat(user_gutter - 4));
+        let name_offset = AVATAR_WIDTH as usize + AVATAR_GAP;
+        let ((content, _), _) = take_width_grapheme(content, width.saturating_sub(name_offset));
+        let mut header = Text::default();
+        for row in 0..AVATAR_HEIGHT {
+            let placeholder = if row == 0 {
+                "⌌    ⌍"
+            } else if row == AVATAR_HEIGHT - 1 {
+                "⌎    ⌏"
+            } else {
+                "      "
+            };
+            let mut line = Line::from(placeholder);
+            if row == AVATAR_HEIGHT / 2 {
+                line.spans.push(space_span(AVATAR_GAP, Style::default()));
+                line.spans.push(Span::styled(content.clone(), style));
+            }
+            header.lines.push(line);
         }
-
-        SenderSpan::AvatarLine { line, gutter: gutter.into() }
+        SenderSpan::AvatarLine { header }
     }
 
     pub fn redact(&mut self, redaction: SyncRoomRedactionEvent) {
@@ -1776,6 +1776,48 @@ pub mod tests {
     use crate::base::EventLocation;
     use crate::config::time_gutter_width;
     use crate::tests::*;
+
+    #[test]
+    fn test_avatar_header_layout() {
+        let mut settings = mock_settings();
+        settings.tunables.image_preview.enabled = false;
+        settings.tunables.image_preview.user_avatar = true;
+        settings.tunables.sender_extra_line = true;
+        settings.tunables.user_gutter_width = 8;
+        settings.tunables.username_display = crate::config::UserDisplayStyle::DisplayName;
+        let mut previews = PreviewManager::new(&settings);
+        let mut room = mock_room();
+        room.update_user_avatar(
+            &TEST_USER2,
+            Some("mxc://example.com/avatar".into()),
+            &settings,
+            &mut previews,
+        );
+        let message = mock_message2();
+        let (text, _) = message.show_with_preview(None, false, 80, &room, &settings, &previews);
+        let lines: Vec<String> = text.lines.iter().map(ToString::to_string).collect();
+        let name_row = lines.iter().position(|l| l.contains("User 2")).unwrap();
+        assert_eq!(lines[name_row], "        User 2");
+        assert_eq!(lines[name_row - 1], "⌌    ⌍");
+        assert_eq!(lines[name_row + 1], "⌎    ⌏");
+        assert!(lines[name_row + 2].starts_with("        helium"));
+
+        let mut fmt = message.get_render_format(None, 80, &room, &settings, &previews);
+        fmt.trackbar = true;
+        fmt.date = None;
+        assert_eq!(fmt.message_start_line(), 4);
+
+        room.display_names.set(TEST_USER2.clone(), Some("長い名前のテスト".into()), true);
+        let sender = message.show_sender(None, true, &room, &settings, &previews, 12);
+        let SenderSpan::AvatarLine { header } = sender else {
+            panic!("expected avatar");
+        };
+        assert!(header.lines.iter().all(|l| l.width() <= 12));
+        assert!(matches!(
+            message.show_sender(None, false, &room, &settings, &previews, 5),
+            SenderSpan::Line(_)
+        ));
+    }
 
     #[test]
     fn test_has_reply_fallback() {

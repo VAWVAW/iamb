@@ -1311,6 +1311,9 @@ impl StatefulWidget for Chat<'_> {
     type State = ChatState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        // Share one left margin across the timeline, image previews, and composer.
+        let padding = area.width.min(1);
+        let area = Rect::new(area.x + padding, area.y, area.width - padding, area.height);
         state.complete_pending_jump(self.store);
 
         let settings = &self.store.application.settings;

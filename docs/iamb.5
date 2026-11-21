@@ -496,12 +496,18 @@ Defaults to
 .Sy true .
 .It Sy user_avatar
 Whether to render user avatars in the message scrollback.
+Avatars are center-cropped to a circle with transparent corners.
+They occupy 6 columns and 3 rows in a separate header, with the sender name
+vertically centered beside them and a two-column gap.
+When enabled, sender names default to display names; an explicit
+.Sy username_display
+setting takes precedence.
 Defaults to
 .Sy true .
 Setting this option also sets
 .Sy user_gutter_width
 to at least
-.Sy 4
+.Sy 8
 and
 .Sy sender_extra_line
 to

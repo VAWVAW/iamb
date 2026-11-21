@@ -1304,10 +1304,19 @@ impl Tunables {
 
         let image_preview = self.image_preview.unwrap_or_default().values();
 
-        let user_gutter_width = self
-            .user_gutter_width
-            .unwrap_or(30)
-            .max(image_preview.user_avatar as usize * 4);
+        let avatar_gutter = crate::preview::AVATAR_WIDTH as usize + crate::preview::AVATAR_GAP;
+        let user_gutter_width = if image_preview.user_avatar {
+            self.user_gutter_width.unwrap_or(avatar_gutter).max(avatar_gutter)
+        } else {
+            self.user_gutter_width.unwrap_or(30)
+        };
+        let username_display = self.username_display.unwrap_or_else(|| {
+            if image_preview.user_avatar {
+                UserDisplayStyle::DisplayName
+            } else {
+                UserDisplayStyle::default()
+            }
+        });
 
         let sender_extra_line = image_preview.user_avatar ||
             user_gutter_width <= 2 ||
@@ -1339,7 +1348,7 @@ impl Tunables {
             theme: self.theme.unwrap_or_else(|| "default".to_string()),
             typing_notice_send: self.typing_notice_send.unwrap_or(true),
             typing_notice_display: self.typing_notice_display.unwrap_or(true),
-            username_display: self.username_display.unwrap_or_default(),
+            username_display,
             message_user_color: self.message_user_color.unwrap_or(false),
             default_register: self.default_register,
             default_room: self.default_room,
@@ -2224,6 +2233,31 @@ time_format = "%"
         .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("invalid strftime"), "{msg}");
+    }
+
+    #[test]
+    fn test_avatar_name_defaults_and_overrides() {
+        let avatar: Tunables =
+            serde_json::from_str(r#"{"image_preview":{"user_avatar":true}}"#).unwrap();
+        let values = avatar.values();
+        assert_eq!(values.username_display, UserDisplayStyle::DisplayName);
+        assert_eq!(values.user_gutter_width, 8);
+        let explicit: Tunables = serde_json::from_str(
+            r#"{
+                "username_display": "username",
+                "user_gutter_width": 12,
+                "image_preview": {"user_avatar": true}
+            }"#,
+        )
+        .unwrap();
+        let values = explicit.values();
+        assert_eq!(values.username_display, UserDisplayStyle::Username);
+        assert_eq!(values.user_gutter_width, 12);
+        let plain: Tunables =
+            serde_json::from_str(r#"{"image_preview":{"user_avatar":false}}"#).unwrap();
+        let values = plain.values();
+        assert_eq!(values.username_display, UserDisplayStyle::Username);
+        assert_eq!(values.user_gutter_width, 30);
     }
 
     #[test]
